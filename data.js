@@ -77,9 +77,12 @@ function generateTrajectory(site, windKey) {
   const WET_MASS   = 2600;   // kg
   const BURN_TIME  = 49;     // s
   const G0         = 9.80665;
-  const MIN_RELEASE_TIME = 2.75;          // let ignition build before the clamps release
-  const HOLD_DOWN_TWR = 1.18;             // extra thrust margin before the clamps release
-  const RAIL_LENGTH = 30;                 // meters of guided vertical travel
+  const LAUNCH_INCLINATION = 89 * Math.PI / 180; // RocketPy uses 89 deg as near-vertical launch
+  const RAIL_LENGTH = 20;                 // meters, matching booster_sim.py
+  const LANDING_BURN_START = 1800;        // meters AGL for active landing guidance
+  const LANDING_THRUST_MAX = 45000;       // N, throttled single-engine class landing burn
+  const LANDING_RESPONSE = 1.8;           // seconds, smooth velocity tracking
+  const LANDING_TILT_LIMIT = 18 * Math.PI / 180;
   const CROSS_AREA = Math.PI * 0.6 * 0.6; // m²  (radius 0.6 m)
 
   // ── Thrust curve (GenericMotor from booster_sim.py) ──
@@ -165,6 +168,11 @@ function generateTrajectory(site, windKey) {
   let recordEvery = Math.round(0.5 / dt); // record every 0.5 s
   let stepCount = 0;
   let releasedFromPad = false;
+  const railUnit = {
+    x: Math.cos(LAUNCH_INCLINATION) * Math.cos(headingRad),
+    y: Math.cos(LAUNCH_INCLINATION) * Math.sin(headingRad),
+    z: Math.sin(LAUNCH_INCLINATION),
+  };
 
   for (let t = 0; t <= 1200; t += dt, stepCount++) {
     const isPowered = t < BURN_TIME;
@@ -173,6 +181,7 @@ function generateTrajectory(site, windKey) {
       : DRY_MASS;
 
     const h = pz;
+    const landingBurnActive = !isPowered && h <= LANDING_BURN_START && vz < 0;
     const rhoH   = rho(Math.max(0, h));
     const cs     = soundSpeed(Math.max(0, h));
     const [wu, wv] = windAtH(h);
@@ -195,7 +204,7 @@ function generateTrajectory(site, windKey) {
     const Fdz = relSpd > 0.01 ? -Fd * (vz   / relSpd) : 0;
 
     // Descent drag augmentation
-    const cdS = descentCdS(h, vz);
+    const cdS = landingBurnActive ? 18.0 : descentCdS(h, vz);
     let FaugX = 0, FaugY = 0, FaugZ = 0;
     if (cdS > 0 && relSpd > 0.01) {
       const Faug = cdS * 0.5 * rhoH * relSpd * relSpd;
@@ -204,25 +213,51 @@ function generateTrajectory(site, windKey) {
       FaugZ = -Faug * (vz    / relSpd);
     }
 
-    // Thrust — small gravity-turn tilt (0.04 rad) toward site heading
-    const F_thrust = isPowered ? interp(THRUST_CURVE, t) : 0;
-    const TILT = 0.04;
-    const Ftx = isPowered ? F_thrust * TILT * Math.cos(headingRad) : 0;
-    const Fty = isPowered ? F_thrust * TILT * Math.sin(headingRad) : 0;
-    const Ftz = isPowered ? F_thrust * Math.cos(TILT)              : 0;
-
     const Fgz = -mass * G0;
 
-    const ax = (Ftx + Fdx + FaugX) / mass;
-    const ay = (Fty + Fdy + FaugY) / mass;
-    const az = (Ftz + Fdz + FaugZ + Fgz) / mass;
+    let Flx = 0, Fly = 0, Flz = 0;
+    let landingThrottle = 0;
+    if (landingBurnActive) {
+      const targetVz = -Math.max(3, Math.min(35, h / 55));
+      const desiredAx = -vx / LANDING_RESPONSE;
+      const desiredAy = -vy / LANDING_RESPONSE;
+      const desiredAz = (targetVz - vz) / LANDING_RESPONSE;
+
+      let cmdX = mass * desiredAx - (Fdx + FaugX);
+      let cmdY = mass * desiredAy - (Fdy + FaugY);
+      let cmdZ = mass * desiredAz - (Fdz + FaugZ + Fgz);
+
+      const horizCmd = Math.sqrt(cmdX * cmdX + cmdY * cmdY);
+      const minVerticalCmd = horizCmd / Math.tan(LANDING_TILT_LIMIT);
+      cmdZ = Math.max(cmdZ, minVerticalCmd, 0);
+
+      const cmdMag = Math.sqrt(cmdX * cmdX + cmdY * cmdY + cmdZ * cmdZ);
+      if (cmdMag > 0.01) {
+        const limitedMag = Math.min(cmdMag, LANDING_THRUST_MAX);
+        const scale = limitedMag / cmdMag;
+        Flx = cmdX * scale;
+        Fly = cmdY * scale;
+        Flz = cmdZ * scale;
+        landingThrottle = limitedMag / LANDING_THRUST_MAX;
+      }
+    }
+
+    // Thrust — small gravity-turn tilt (0.04 rad) toward site heading
+    const F_thrust = isPowered ? interp(THRUST_CURVE, t) : 0;
+    const Ftx = isPowered ? F_thrust * railUnit.x : 0;
+    const Fty = isPowered ? F_thrust * railUnit.y : 0;
+    const Ftz = isPowered ? F_thrust * railUnit.z : 0;
+
+    const ax = (Ftx + Flx + Fdx + FaugX) / mass;
+    const ay = (Fty + Fly + Fdy + FaugY) / mass;
+    const az = (Ftz + Flz + Fdz + FaugZ + Fgz) / mass;
 
     const accel = Math.sqrt(ax*ax + ay*ay + az*az);
     if (accel / G0 > maxG) maxG = accel / G0;
 
-    const canReleaseFromPad = isPowered &&
-      t >= MIN_RELEASE_TIME &&
-      Ftz > mass * G0 * HOLD_DOWN_TWR;
+    const thrustAlongRail = Ftx * railUnit.x + Fty * railUnit.y + Ftz * railUnit.z;
+    const gravityAlongRail = Fgz * railUnit.z;
+    const canReleaseFromPad = isPowered && (thrustAlongRail + gravityAlongRail) > 0;
 
     if (!releasedFromPad && !canReleaseFromPad) {
       vx = 0;  vy = 0;  vz = 0;
@@ -233,12 +268,22 @@ function generateTrajectory(site, windKey) {
         liftoffTime = t;
       }
 
-      vx += ax * dt;  vy += ay * dt;  vz += az * dt;
-      px += vx * dt;  py += vy * dt;  pz += vz * dt;
+      const railProgress = px * railUnit.x + py * railUnit.y + pz * railUnit.z;
+      if (railProgress < RAIL_LENGTH) {
+        const railSpeed = vx * railUnit.x + vy * railUnit.y + vz * railUnit.z;
+        const accelAlongRail = ax * railUnit.x + ay * railUnit.y + az * railUnit.z;
+        const nextRailSpeed = Math.max(0, railSpeed + accelAlongRail * dt);
+        const nextRailProgress = railProgress + nextRailSpeed * dt;
 
-      if (pz < RAIL_LENGTH) {
-        px = 0;  py = 0;
-        vx = 0;  vy = 0;
+        vx = railUnit.x * nextRailSpeed;
+        vy = railUnit.y * nextRailSpeed;
+        vz = railUnit.z * nextRailSpeed;
+        px = railUnit.x * nextRailProgress;
+        py = railUnit.y * nextRailProgress;
+        pz = railUnit.z * nextRailProgress;
+      } else {
+        vx += ax * dt;  vy += ay * dt;  vz += az * dt;
+        px += vx * dt;  py += vy * dt;  pz += vz * dt;
       }
     }
 
@@ -255,6 +300,8 @@ function generateTrajectory(site, windKey) {
           t, x: px/1000, y: py/1000, z: 0,
           speed: landSpd, mach: 0, phase: 'landing',
           vx, vy, vz,
+          landingBurn: landingBurnActive,
+          landingThrottle,
         });
         break;
       }
@@ -264,11 +311,12 @@ function generateTrajectory(site, windKey) {
 
     // Phase
     let phase;
-    if (isPowered)      phase = 'powered';
-    else if (vz >= 0)   phase = 'coast';
-    else if (h > 10000) phase = 'entry';
-    else if (h > 1000)  phase = 'descent';
-    else                phase = 'landing';
+    if (isPowered)            phase = 'powered';
+    else if (vz >= 0)         phase = 'coast';
+    else if (landingBurnActive) phase = 'landing';
+    else if (h > 10000)       phase = 'entry';
+    else if (h > 1000)        phase = 'descent';
+    else                      phase = 'landing';
 
     if (stepCount % recordEvery === 0) {
       const inertialSpeed = Math.sqrt(vx*vx + vy*vy + vz*vz);
@@ -276,6 +324,8 @@ function generateTrajectory(site, windKey) {
         t, x: px/1000, y: py/1000, z: pz/1000,
         speed: inertialSpeed, mach, phase,
         vx, vy, vz,
+        landingBurn: landingBurnActive,
+        landingThrottle,
       });
     }
   }

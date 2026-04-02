@@ -667,7 +667,7 @@ function updateAnnunciator(pt) {
   else if (traj.burnoutTime && pt.t > traj.burnoutTime - 1 && pt.t < traj.burnoutTime + 1) status = "MECO";
   else if (traj.apogeeTime && pt.t > traj.apogeeTime - 1 && pt.t < traj.apogeeTime + 1) status = "APOGEE REACHED";
   else if (pt.phase === 'entry' && !annunciatorStates.entry) { status = "ENTRY BURN"; annunciatorStates.entry = true; }
-  else if (pt.phase === 'landing' && !annunciatorStates.landing) { status = "LANDING BURN"; annunciatorStates.landing = true; }
+  else if (pt.landingBurn && !annunciatorStates.landing) { status = "LANDING BURN"; annunciatorStates.landing = true; }
 
   if (status && status !== lastStatus) {
     el.textContent = status;
@@ -840,7 +840,7 @@ function animate() {
 
       // Landing: quadratic blend toward world-up so the rocket is perfectly vertical at touchdown.
       // pt.z is altitude in km; landing phase spans roughly 0–1 km.
-      if (pt.phase === 'landing') {
+      if (pt.phase === 'landing' || pt.landingBurn) {
         const blend = Math.pow(1.0 - Math.min(pt.z, 1.0), 2);
         orientDir.lerp(new THREE.Vector3(0, 1, 0), blend);
         orientDir.normalize();
@@ -857,13 +857,13 @@ function animate() {
       // Slerp rates: slow deliberate flip during coast; fast correction during landing
       let slerpRate = 0.12;
       if (pt.phase === 'coast')   slerpRate = velLen < 120 ? 0.012 : 0.02;
-      else if (pt.phase === 'landing') slerpRate = 0.20;
+      else if (pt.phase === 'landing' || pt.landingBurn) slerpRate = 0.20;
       rocketObj.group.quaternion.slerp(targetQuat, slerpRate);
     }
 
     // Engine glow & plume during powered phase
     const isPowered = pt.phase === 'powered';
-    const isLanding = pt.phase === 'landing';
+    const isLanding = !!pt.landingBurn;
     const isActive = isPowered || isLanding;
 
     const glowIntensity = isActive ? 3 + Math.sin(animFrameCounter * 0.3) * 0.5 : 0;
@@ -874,12 +874,12 @@ function animate() {
     updateParticles(rocketPos, velocityDir, isActive, isLanding);
 
     // Grid fins & Landing legs animation
-    const isDescent = pt.phase === 'descent' || pt.phase === 'landing';
+    const isDescent = pt.phase === 'descent' || pt.phase === 'landing' || pt.landingBurn;
     rocketObj.gridFins.forEach(gf => {
       gf.rotation.x = isDescent ? Math.sin(animFrameCounter * 0.1) * 0.3 : 0;
     });
     
-    const isLandingPhase = pt.phase === 'landing';
+    const isLandingPhase = pt.phase === 'landing' || pt.landingBurn;
     rocketObj.landingLegs.forEach(leg => {
       const targetRot = isLandingPhase ? 1.0 : 0.1;
       leg.rotation.z += (targetRot - leg.rotation.z) * 0.05;
@@ -887,7 +887,10 @@ function animate() {
 
     if (rocketObj.plume.visible) {
       rocketObj.plume.material.opacity = 0.4 + Math.sin(animFrameCounter * 0.5) * 0.2;
-      const plumeScale = isPowered ? 1.0 + Math.random() * 0.15 : 0.5 + Math.random() * 0.1;
+      const landingScale = 0.35 + (pt.landingThrottle || 0) * 0.45;
+      const plumeScale = isPowered
+        ? 1.0 + Math.random() * 0.15
+        : landingScale + Math.random() * 0.08;
       rocketObj.plume.scale.setScalar(plumeScale);
     }
   }
