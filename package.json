@@ -1,0 +1,12 @@
+{
+  "name": "uk-booster-sim",
+  "version": "1.0.0",
+  "description": "UK Reusable Booster 3D Mission Simulation",
+  "main": "app.js",
+  "scripts": {
+    "start": "npx http-server ./"
+  },
+  "dependencies": {
+    "http-server": "^14.1.1"
+  }
+}

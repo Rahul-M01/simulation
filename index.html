@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UK Reusable Booster — 3D Mission Simulation</title>
+  <meta name="description" content="Interactive 3D simulation of a reusable orbital-class booster launching and landing across UK spaceports. Powered by RocketPy trajectory data." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Loading Screen -->
+  <div id="loader">
+    <div class="loader-inner">
+      <div class="loader-logo">
+        <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
+          <path d="M30 5 L30 55" stroke="url(#grad1)" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M30 5 L22 18 L38 18 Z" fill="url(#grad1)"/>
+          <path d="M22 42 L30 55 L38 42" stroke="url(#grad1)" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <circle cx="30" cy="5" r="3" fill="#00d4ff"/>
+          <defs>
+            <linearGradient id="grad1" x1="30" y1="5" x2="30" y2="55" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#00d4ff"/>
+              <stop offset="100%" stop-color="#7b2ff7"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <div class="loader-title">UK BOOSTER MISSION</div>
+      <div class="loader-sub">Initialising 3D Simulation Engine…</div>
+      <div class="loader-bar"><div class="loader-fill" id="loaderFill"></div></div>
+      <div class="loader-pct" id="loaderPct">0%</div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header id="appHeader">
+    <div class="header-left">
+      <div class="header-logo">
+        <svg width="32" height="32" viewBox="0 0 60 60" fill="none">
+          <path d="M30 5 L30 55" stroke="url(#hg1)" stroke-width="3" stroke-linecap="round"/>
+          <path d="M30 5 L21 20 L39 20 Z" fill="url(#hg1)"/>
+          <defs>
+            <linearGradient id="hg1" x1="30" y1="5" x2="30" y2="55" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#00d4ff"/>
+              <stop offset="100%" stop-color="#7b2ff7"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <div>
+        <div class="header-title">UK Reusable Booster</div>
+        <div class="header-sub">3D Mission Simulation</div>
+      </div>
+    </div>
+    <div class="header-center">
+      <div class="live-badge" id="liveBadge">
+        <span class="live-dot"></span>
+        <span id="flightPhase">READY</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="telemetry-pill" id="telAlt">
+        <span class="tel-label">ALT</span>
+        <span class="tel-val" id="telAltVal">0 km</span>
+      </div>
+      <div class="telemetry-pill" id="telSpd">
+        <span class="tel-label">SPD</span>
+        <span class="tel-val" id="telSpdVal">0 m/s</span>
+      </div>
+      <div class="telemetry-pill" id="telMach">
+        <span class="tel-label">MACH</span>
+        <span class="tel-val" id="telMachVal">0.00</span>
+      </div>
+      <div class="telemetry-pill" id="telT">
+        <span class="tel-label">T+</span>
+        <span class="tel-val" id="telTVal">0s</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mission Status Announcement Overlay -->
+  <div id="statusAnnunciator">
+    <div id="statusText"></div>
+  </div>
+
+  <!-- Canvas -->
+  <canvas id="canvas3d"></canvas>
+
+  <!-- Left Panel: Site Selector -->
+  <aside id="sitePanel">
+    <div class="panel-title">LAUNCH SITES</div>
+    <div id="siteList"></div>
+    <div class="panel-divider"></div>
+    <div class="panel-title">WIND CONDITION</div>
+    <div id="windList"></div>
+    <div class="panel-divider"></div>
+    <div class="panel-title">VIEW MODE</div>
+    <div id="viewBtns">
+      <button class="view-btn active" id="btnFollow">Follow Rocket</button>
+      <button class="view-btn" id="btnOverview">Overview</button>
+      <button class="view-btn" id="btnTop">Top-Down</button>
+    </div>
+  </aside>
+
+  <!-- Right Panel: Telemetry -->
+  <aside id="telPanel">
+    <div class="panel-title">FLIGHT DATA</div>
+
+    <div class="metric-card" id="cardApogee">
+      <div class="metric-header">
+        <span class="metric-icon">🚀</span>
+        <span class="metric-name">APOGEE</span>
+      </div>
+      <div class="metric-value" id="mApogee">—</div>
+      <div class="metric-unit">kilometres AGL</div>
+    </div>
+
+    <div class="metric-card" id="cardMach">
+      <div class="metric-header">
+        <span class="metric-icon">⚡</span>
+        <span class="metric-name">MAX MACH</span>
+      </div>
+      <div class="metric-value" id="mMach">—</div>
+      <div class="metric-unit">Mach number</div>
+    </div>
+
+    <div class="metric-card" id="cardDrift">
+      <div class="metric-header">
+        <span class="metric-icon">🎯</span>
+        <span class="metric-name">DRIFT</span>
+      </div>
+      <div class="metric-value" id="mDrift">—</div>
+      <div class="metric-unit">km lateral drift</div>
+    </div>
+
+    <div class="metric-card" id="cardLand">
+      <div class="metric-header">
+        <span class="metric-icon">🛬</span>
+        <span class="metric-name">LAND SPEED</span>
+      </div>
+      <div class="metric-value" id="mLand">—</div>
+      <div class="metric-unit">m/s touchdown</div>
+    </div>
+
+    <div class="panel-divider"></div>
+    <div class="panel-title">ALTITUDE PROFILE</div>
+    <canvas id="miniChart" width="220" height="90"></canvas>
+
+    <div class="panel-divider"></div>
+    <div class="panel-title">PLAYBACK</div>
+    <div class="playback-row">
+      <button class="pb-btn" id="btnRewind" title="Restart">⏮</button>
+      <button class="pb-btn primary" id="btnPlay" title="Play/Pause">▶</button>
+      <button class="pb-btn" id="btnFwd" title="Fast-Forward">⏩</button>
+    </div>
+    <div class="speed-row">
+      <span class="spd-lbl">Speed</span>
+      <input type="range" id="speedSlider" min="0.5" max="8" step="0.5" value="2" />
+      <span class="spd-val" id="speedVal">×2</span>
+    </div>
+    <input type="range" id="scrubBar" min="0" max="100" value="0" class="scrub-bar" />
+
+  </aside>
+
+  <!-- Bottom timeline bar -->
+  <div id="timelineBar">
+    <div class="phase-marker" style="left:0%">
+      <div class="phase-line"></div>
+      <div class="phase-label">LAUNCH</div>
+    </div>
+    <div class="phase-marker" id="pmBurnout">
+      <div class="phase-line"></div>
+      <div class="phase-label">BURNOUT</div>
+    </div>
+    <div class="phase-marker" id="pmApogee">
+      <div class="phase-line"></div>
+      <div class="phase-label">APOGEE</div>
+    </div>
+    <div class="phase-marker" id="pmEntry">
+      <div class="phase-line"></div>
+      <div class="phase-label">ENTRY</div>
+    </div>
+    <div class="phase-marker" style="right:0;left:auto">
+      <div class="phase-line"></div>
+      <div class="phase-label">LANDING</div>
+    </div>
+    <div class="timeline-progress" id="timelineProg"></div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div id="toastContainer"></div>
+
+  <!-- Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
