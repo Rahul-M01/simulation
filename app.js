@@ -17,13 +17,22 @@
 // ══════════════════════════════════════════════════════════════════
 const THREE = window.THREE;
 
+// Precomputed quaternion for rocket orientation correction (local -PI/2 X rotation).
+// Applied after Matrix4.lookAt so the nose (+Y local) aligns with the desired direction.
+const _rocketCorrQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+
+// Distance from rocket group pivot to engine end (local 0.55 × scale 0.35).
+// Used to keep the rocket sitting on the ground rather than clipping through it.
+const _rocketGroundOffset = 0.55 * 0.35; // 0.1925 km
+
 const state = {
   activeSite: 'Sutherland',
   activeWind: 'moderate',
   playing: false,
   frameIdx: 0,
-  speed: 2,         // frames per animation tick
+  speed: 1,         // frames per animation tick
   viewMode: 'follow', // follow | overview | top
+  showTrajectories: false,
   trajectory: null,
   displaySites: ['Sutherland', 'SaxaVord', 'Prestwick', 'Snowdonia', 'Cornwall'],
 };
@@ -478,6 +487,15 @@ function clearScene() {
   groundTrackLines = {};
 }
 
+function setTrajectoryVisibility(visible) {
+  Object.values(trajectoryGroups).forEach(group => {
+    if (group) group.visible = visible;
+  });
+  Object.values(groundTrackLines).forEach(line => {
+    if (line) line.visible = visible;
+  });
+}
+
 function buildScene() {
   clearScene();
 
@@ -519,6 +537,7 @@ function buildScene() {
   rocketObj = rocket;
   state.trajectory = TRAJECTORIES[state.activeSite][state.activeWind];
   state.frameIdx = 0;
+  setTrajectoryVisibility(state.showTrajectories);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -643,7 +662,7 @@ function updateAnnunciator(pt) {
   if (!traj || !el) return;
 
   let status = "";
-  if (pt.t < 2) status = "LIFT OFF";
+  if (traj.liftoffTime && pt.t >= traj.liftoffTime && pt.t < traj.liftoffTime + 2) status = "LIFT OFF";
   else if (pt.t > 15 && pt.t < 18) status = "MAX-Q";
   else if (traj.burnoutTime && pt.t > traj.burnoutTime - 1 && pt.t < traj.burnoutTime + 1) status = "MECO";
   else if (traj.apogeeTime && pt.t > traj.apogeeTime - 1 && pt.t < traj.apogeeTime + 1) status = "APOGEE REACHED";
@@ -790,23 +809,56 @@ function animate() {
   // Update rocket position & orientation
   if (rocketObj) {
     rocketObj.group.position.copy(rocketPos);
+    // Clamp rocket so the engine bell never clips below ground (pivot is 0.1925 km above engine end)
+    if (rocketObj.group.position.y < _rocketGroundOffset) {
+      rocketObj.group.position.y = _rocketGroundOffset;
+    }
 
-    // Point nose along velocity direction
-    const ptNext = traj.points[Math.min(state.frameIdx + 3, traj.points.length - 1)];
-    const ptPrev = traj.points[Math.max(state.frameIdx - 1, 0)];
-    const vel = new THREE.Vector3(
-      ptNext.x - ptPrev.x,
-      ptNext.z - ptPrev.z,
-      ptNext.y - ptPrev.y
-    ).normalize();
+    // Rocket orientation — booster landing profile:
+    //   Ascent  (powered + rising coast): nose tracks velocity → nose up, engines down, thrust up ✓
+    //   Descent (falling coast, entry, descent): nose opposes velocity → stays nose-up, engines
+    //     face Earth for retrograde braking.
+    //   Landing: progressively blended to vertical so the rocket stands upright at touchdown.
+    //   Wide lookahead during coast smooths the velocity near apogee (speed ≈ 0).
+    //   Quaternion slerp gives deliberate, realistic maneuver timing — no snapping.
+    const velocity = new THREE.Vector3(pt.vx || 0, pt.vz || 0, pt.vy || 0);
+    const velocityDir = velocity.clone();
+    const velLen = velocityDir.length();
+    if (velLen > 0.001) {
+      velocityDir.divideScalar(velLen);
+      let orientDir = velocityDir.clone();
+      if (pt.phase !== 'powered') {
+        const clearlyDescending = pt.vz < -20 || pt.phase === 'entry' || pt.phase === 'descent' || pt.phase === 'landing';
+        if (clearlyDescending) orientDir.negate();
+      }
 
-    if (vel.length() > 0.1) {
-      const up = new THREE.Vector3(0, 1, 0);
-      const mat4 = new THREE.Matrix4().lookAt(
-        new THREE.Vector3(0, 0, 0), vel, up
-      );
-      rocketObj.group.setRotationFromMatrix(mat4);
-      rocketObj.group.rotateX(Math.PI / 2);
+      if (pt.phase === 'coast') {
+        const apexBlend = THREE.MathUtils.clamp(1 - velLen / 90, 0, 0.85);
+        orientDir.lerp(new THREE.Vector3(0, 1, 0), apexBlend);
+        orientDir.normalize();
+      }
+
+      // Landing: quadratic blend toward world-up so the rocket is perfectly vertical at touchdown.
+      // pt.z is altitude in km; landing phase spans roughly 0–1 km.
+      if (pt.phase === 'landing') {
+        const blend = Math.pow(1.0 - Math.min(pt.z, 1.0), 2);
+        orientDir.lerp(new THREE.Vector3(0, 1, 0), blend);
+        orientDir.normalize();
+      }
+
+      // Avoid gimbal lock when pointing straight up or down
+      const worldUp = Math.abs(orientDir.y) > 0.999
+        ? new THREE.Vector3(0, 0, 1)
+        : new THREE.Vector3(0, 1, 0);
+      const mat4 = new THREE.Matrix4().lookAt(new THREE.Vector3(0, 0, 0), orientDir, worldUp);
+      const targetQuat = new THREE.Quaternion().setFromRotationMatrix(mat4);
+      targetQuat.multiply(_rocketCorrQuat); // aligns nose (+Y local) with orientDir
+
+      // Slerp rates: slow deliberate flip during coast; fast correction during landing
+      let slerpRate = 0.12;
+      if (pt.phase === 'coast')   slerpRate = velLen < 120 ? 0.012 : 0.02;
+      else if (pt.phase === 'landing') slerpRate = 0.20;
+      rocketObj.group.quaternion.slerp(targetQuat, slerpRate);
     }
 
     // Engine glow & plume during powered phase
@@ -819,7 +871,7 @@ function animate() {
     rocketObj.engineLight.color.set(isPowered ? 0xff6030 : 0x30aaff);
     rocketObj.plume.visible = isActive;
 
-    updateParticles(rocketPos, vel, isActive, isLanding);
+    updateParticles(rocketPos, velocityDir, isActive, isLanding);
 
     // Grid fins & Landing legs animation
     const isDescent = pt.phase === 'descent' || pt.phase === 'landing';
@@ -866,6 +918,7 @@ function updateTrajectoryOpacities() {
       }
     });
   });
+  setTrajectoryVisibility(state.showTrajectories);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -935,6 +988,13 @@ document.getElementById('btnFollow').onclick   = () => setViewMode('follow');
 document.getElementById('btnOverview').onclick = () => setViewMode('overview');
 document.getElementById('btnTop').onclick      = () => setViewMode('top');
 
+function updateTrajectoryToggleLabel() {
+  const btn = document.getElementById('btnToggleTraj');
+  if (!btn) return;
+  btn.textContent = state.showTrajectories ? 'Trails On' : 'Trails Off';
+  btn.classList.toggle('active', state.showTrajectories);
+}
+
 // Playback
 document.getElementById('btnPlay').onclick = () => {
   if (state.frameIdx >= state.trajectory.points.length - 1) {
@@ -962,13 +1022,13 @@ document.getElementById('btnRewind').onclick = () => {
 
 document.getElementById('btnFwd').onclick = () => {
   state.speed = Math.min(state.speed * 2, 32);
-  document.getElementById('speedVal').textContent = '×' + state.speed;
+  document.getElementById('speedVal').textContent = 'x' + state.speed;
   document.getElementById('speedSlider').value = state.speed;
 };
 
 document.getElementById('speedSlider').oninput = function() {
   state.speed = parseFloat(this.value);
-  document.getElementById('speedVal').textContent = '×' + state.speed;
+  document.getElementById('speedVal').textContent = 'x' + state.speed;
 };
 
 document.getElementById('scrubBar').oninput = function() {
@@ -1049,6 +1109,14 @@ function init() {
   buildSitePanel();
   buildScene();
   updateRightPanel();
+  document.getElementById('btnToggleTraj').onclick = () => {
+    state.showTrajectories = !state.showTrajectories;
+    setTrajectoryVisibility(state.showTrajectories);
+    updateTrajectoryToggleLabel();
+  };
+  updateTrajectoryToggleLabel();
+  document.getElementById('speedSlider').value = state.speed;
+  document.getElementById('speedVal').textContent = 'x' + state.speed;
 
   setTimeout(() => {
     showToast('🚀 System Launch Sequence Initialized…');

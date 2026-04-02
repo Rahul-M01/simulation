@@ -77,6 +77,9 @@ function generateTrajectory(site, windKey) {
   const WET_MASS   = 2600;   // kg
   const BURN_TIME  = 49;     // s
   const G0         = 9.80665;
+  const MIN_RELEASE_TIME = 2.75;          // let ignition build before the clamps release
+  const HOLD_DOWN_TWR = 1.18;             // extra thrust margin before the clamps release
+  const RAIL_LENGTH = 30;                 // meters of guided vertical travel
   const CROSS_AREA = Math.PI * 0.6 * 0.6; // m²  (radius 0.6 m)
 
   // ── Thrust curve (GenericMotor from booster_sim.py) ──
@@ -156,10 +159,12 @@ function generateTrajectory(site, windKey) {
   const dt = 0.25; // finer step for accuracy at high thrust
   const points = [];
   let apogeeTime = 0;
+  let liftoffTime = null;
   let maxDynPressKPa = 0;
   let maxG = 0;
   let recordEvery = Math.round(0.5 / dt); // record every 0.5 s
   let stepCount = 0;
+  let releasedFromPad = false;
 
   for (let t = 0; t <= 1200; t += dt, stepCount++) {
     const isPowered = t < BURN_TIME;
@@ -215,8 +220,27 @@ function generateTrajectory(site, windKey) {
     const accel = Math.sqrt(ax*ax + ay*ay + az*az);
     if (accel / G0 > maxG) maxG = accel / G0;
 
-    vx += ax * dt;  vy += ay * dt;  vz += az * dt;
-    px += vx * dt;  py += vy * dt;  pz += vz * dt;
+    const canReleaseFromPad = isPowered &&
+      t >= MIN_RELEASE_TIME &&
+      Ftz > mass * G0 * HOLD_DOWN_TWR;
+
+    if (!releasedFromPad && !canReleaseFromPad) {
+      vx = 0;  vy = 0;  vz = 0;
+      px = 0;  py = 0;  pz = 0;
+    } else {
+      if (!releasedFromPad) {
+        releasedFromPad = true;
+        liftoffTime = t;
+      }
+
+      vx += ax * dt;  vy += ay * dt;  vz += az * dt;
+      px += vx * dt;  py += vy * dt;  pz += vz * dt;
+
+      if (pz < RAIL_LENGTH) {
+        px = 0;  py = 0;
+        vx = 0;  vy = 0;
+      }
+    }
 
     // Touchdown — only valid after burnout (during powered phase the pad holds the rocket)
     if (pz < 0) {
@@ -227,7 +251,11 @@ function generateTrajectory(site, windKey) {
       } else {
         pz = 0;
         const landSpd = Math.sqrt(vx*vx + vy*vy + vz*vz);
-        points.push({ t, x: px/1000, y: py/1000, z: 0, speed: landSpd, mach: 0, phase: 'landing' });
+        points.push({
+          t, x: px/1000, y: py/1000, z: 0,
+          speed: landSpd, mach: 0, phase: 'landing',
+          vx, vy, vz,
+        });
         break;
       }
     }
@@ -243,7 +271,12 @@ function generateTrajectory(site, windKey) {
     else                phase = 'landing';
 
     if (stepCount % recordEvery === 0) {
-      points.push({ t, x: px/1000, y: py/1000, z: pz/1000, speed: relSpd, mach, phase });
+      const inertialSpeed = Math.sqrt(vx*vx + vy*vy + vz*vz);
+      points.push({
+        t, x: px/1000, y: py/1000, z: pz/1000,
+        speed: inertialSpeed, mach, phase,
+        vx, vy, vz,
+      });
     }
   }
 
@@ -254,6 +287,7 @@ function generateTrajectory(site, windKey) {
   return {
     points,
     apogeeTime,
+    liftoffTime,
     burnoutTime: BURN_TIME,
     flightTime:  finalPt.t,
     metrics: {
