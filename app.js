@@ -8,8 +8,8 @@ const state = {
   activeWind: 'moderate',
   playing: false,
   frameIdx: 0,
-  speed: 1,         // frames per animation tick
-  viewMode: 'follow', // follow | overview | top
+  speed: 1,
+  viewMode: 'follow',
   showTrajectories: false,
   trajectory: null,
   displaySites: ['Sutherland', 'SaxaVord', 'Prestwick', 'Snowdonia', 'Cornwall'],
@@ -131,7 +131,7 @@ function createGround() {
   const colors = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
-    const y = pos.getY(i); // becomes -worldZ after rotation
+    const y = pos.getY(i);
     const r = Math.sqrt(x * x + y * y);
 
     const padMask = smooth(4, 14, r);
@@ -662,7 +662,6 @@ function drawMiniChart(trajectory, currentIdx) {
     miniCtx.fillStyle = '#ffffff';
     miniCtx.fill();
 
-    // Vertical line
     miniCtx.beginPath();
     miniCtx.moveTo(cx, 0);
     miniCtx.lineTo(cx, H);
@@ -1103,13 +1102,7 @@ function simulateLoading() {
   const pct  = document.getElementById('loaderPct');
   let progress = 0;
 
-  const steps = [
-    [15, 300, 'Generating trajectories…'],
-    [40, 600, 'Building 3D scene…'],
-    [65, 400, 'Loading rocket geometry…'],
-    [85, 500, 'Initialising renderer…'],
-    [100, 300, 'Ready!'],
-  ];
+  const steps = [[15, 300], [40, 600], [65, 400], [85, 500], [100, 300]];
 
   let i = 0;
   function step() {

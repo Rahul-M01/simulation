@@ -1,39 +1,35 @@
 # UK Reusable Booster
 
-Interactive 3D simulation of a reusable orbital-class booster launching and landing from UK spaceports. Trajectories are generated in-browser by a flight-dynamics model (thrust curve, ISA atmosphere, drag tables, log-law wind with Ekman veering, guided landing burn) and rendered with Three.js.
+Three.js simulation of a reusable booster flying a suborbital hop from UK spaceports. Trajectories are integrated in the browser (thrust curve, ISA atmosphere, drag tables, altitude-varying wind, guided landing burn), then replayed in 3D.
 
-## What's in it
+## Features
 
 - Five launch sites: Sutherland, SaxaVord, Prestwick, Snowdonia, Cornwall
-- Four wind conditions (calm through storm) with altitude-varying profile
-- Full flight: powered ascent, coast to apogee, entry, grid-fin descent, landing burn
-- Live telemetry: altitude, speed, Mach, mission time, phase
-- Procedural terrain, mountains and vegetation around the pad
-- Follow / overview / top-down cameras
-- Trajectory trails toggle across all sites
+- Four wind conditions with log-law boundary layer and jet-stream ramp
+- Ascent, coast, entry, descent, landing burn
+- Telemetry: altitude, speed, Mach, mission time, phase
+- Procedural terrain and vegetation around the pad
+- Follow, overview, top-down cameras
+- Toggleable trajectory trails across sites
 
-## Running
+## Run
 
 ```bash
 npm install
 npm start
 ```
 
-Open http://localhost:8080. No backend, no build step.
+Then open http://localhost:8080.
 
-## Hosting
+## Deploy
 
-### Cloudflare Pages
+Cloudflare Pages: connect the repo, preset `None`, blank build command, output `/`. `_headers` provides the security headers.
 
-Connect the repo, framework preset `None`, build command blank, output directory `/`. `_headers` supplies security headers.
+GitHub Pages: Settings → Pages → default branch root. `.nojekyll` is already committed.
 
-### GitHub Pages
+## Layout
 
-Settings → Pages, source = default branch root. `.nojekyll` is already in place.
-
-## Files
-
-- `index.html`, `style.css` — layout and UI
-- `app.js` — Three.js scene, animation loop, camera, telemetry
-- `data.js` — sites, wind profiles, trajectory integrator
+- `index.html`, `style.css` — layout and styling
+- `app.js` — Three.js scene, camera, telemetry, animation loop
+- `data.js` — sites, wind, trajectory integrator
 - `_headers`, `.nojekyll` — hosting config

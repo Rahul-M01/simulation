@@ -157,7 +157,7 @@ function generateTrajectory(site, windKey) {
   let liftoffTime = null;
   let maxDynPressKPa = 0;
   let maxG = 0;
-  let recordEvery = Math.round(0.5 / dt); // record every 0.5 s
+  let recordEvery = Math.round(0.5 / dt);
   let stepCount = 0;
   let releasedFromPad = false;
   const railUnit = {
