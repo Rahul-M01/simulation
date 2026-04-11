@@ -1,46 +1,46 @@
-# UK Booster Simulation
+# UK Reusable Booster — 3D Mission Simulation
 
-This project is a static web app. That means the safest free hosting option is a static host such as Cloudflare Pages or GitHub Pages.
+Interactive Three.js visualisation of a reusable orbital-class booster launching and landing from UK spaceports. Trajectories are precomputed from a Python flight-dynamics sim (`booster_sim.py`) and replayed in the browser, so the physics (thrust, drag, wind, landing burn) stays consistent with the offline model.
 
-## Safe Hosting Checklist
+## What it shows
 
-- Keep it static only: no backend, no database, no API secrets in `app.js`, `data.js`, or `index.html`.
-- Deploy from your own Git repository only.
-- Leave HTTPS enabled.
-- If you use Cloudflare Pages, the `_headers` file in this repo adds basic security headers.
+- Five UK launch sites: Sutherland, SaxaVord, Prestwick, Snowdonia, Cornwall
+- Three wind conditions (calm / moderate / strong south-westerlies)
+- Full flight profile: powered ascent, coast to apogee, entry burn, grid-fin descent, landing burn
+- Live telemetry: altitude, speed, Mach, mission time, phase
+- Procedural biome around the launch pad (terrain, distant mountains, vegetation)
+- Camera modes: follow, overview, top-down
+- Toggleable trajectory trails across sites
 
-## Option 1: Cloudflare Pages
-
-1. Push this folder to a GitHub repository.
-2. In Cloudflare Pages, create a new project and connect that repository.
-3. Use these settings:
-   - Framework preset: `None`
-   - Build command: leave blank
-   - Build output directory: `/`
-4. Deploy.
-
-Notes:
-- This app does not need any environment variables.
-- If you attach a custom domain, keep the default HTTPS setting on.
-
-## Option 2: GitHub Pages
-
-1. Push this folder to a GitHub repository.
-2. In GitHub, open `Settings -> Pages`.
-3. Set the source to deploy from your default branch root.
-4. Save and wait for the site URL.
-
-Notes:
-- The `.nojekyll` file ensures GitHub Pages serves the files directly.
-- GitHub Pages will not use the Cloudflare `_headers` file, so Cloudflare Pages is the better option if you want those headers without extra work.
-
-## Local Preview
+## Running locally
 
 ```bash
+npm install
 npm start
 ```
 
-## Files Added For Hosting
+Then open http://localhost:8080.
 
-- `.nojekyll`: prevents GitHub Pages from trying to process the site with Jekyll
-- `_headers`: adds browser security headers on hosts that support this format, including Cloudflare Pages
+The app is fully static — no backend, no build step, no API keys. Any static host works.
+
+## Hosting
+
+### Cloudflare Pages
+
+1. Push to GitHub.
+2. Create a new Pages project and connect the repo.
+3. Framework preset: `None`. Build command: blank. Output directory: `/`.
+4. Deploy. The `_headers` file adds basic security headers automatically.
+
+### GitHub Pages
+
+1. Push to GitHub.
+2. `Settings → Pages`, source = default branch root.
+3. The `.nojekyll` file prevents Jekyll from mangling the site. GitHub Pages ignores `_headers`, so Cloudflare is the better option if you care about those headers.
+
+## Files
+
+- `index.html`, `style.css` — layout and UI
+- `app.js` — Three.js scene, animation loop, camera, telemetry
+- `data.js` — site definitions, wind profiles, trajectory data
+- `_headers`, `.nojekyll` — hosting config

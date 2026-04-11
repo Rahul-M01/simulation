@@ -1,19 +1,3 @@
-/**
- * UK Reusable Booster — Trajectory Data
- * =======================================
- * Physics matched to booster_sim.py:
- *   - 14m booster, 2600 kg wet mass, 1500 kg dry mass
- *   - 65 kN time-varying thrust, Isp = 295 s, 49 s burn
- *   - Actual DRAG_OFF / DRAG_ON tables from Python sim
- *   - Height-varying wind (boundary layer + jet stream)
- *   - 3-stage cascaded drag descent (grid fins → entry brake → landing brake)
- *   - ISA density + temperature-correct sound speed
- *   - Apogee ~80–90 km
- *
- * Coordinate system: local ENU (East, North, Up in km)
- */
-
-// ── Site Definitions ─────────────────────────────────────────────
 const SITES = {
   Sutherland: {
     name: "Sutherland",
@@ -57,7 +41,6 @@ const SITES = {
   }
 };
 
-// ── Wind Conditions (UK south-westerlies) ────────────────────────
 const WIND_CONDITIONS = {
   calm:     { label: "Calm",     beaufort: "B1-2", speed: "~2 m/s",  wu: 1.5,  wv: 1.0  },
   moderate: { label: "Moderate", beaufort: "B4",   speed: "~9 m/s",  wu: 7.0,  wv: 5.5  },
@@ -65,13 +48,11 @@ const WIND_CONDITIONS = {
   storm:    { label: "Storm",    beaufort: "B10",  speed: "~28 m/s", wu: 24.0, wv: 16.0 },
 };
 
-// ── Trajectory Generator ─────────────────────────────────────────
 function generateTrajectory(site, windKey) {
   const wind = WIND_CONDITIONS[windKey];
   const wu_ref = wind.wu, wv_ref = wind.wv;
   const headingRad = (site.heading - 90) * Math.PI / 180;
 
-  // ── Booster constants (booster_sim.py) ──
   const DRY_MASS   = 1500;   // kg
   const PROP_MASS  = 1100;   // kg
   const WET_MASS   = 2600;   // kg
@@ -85,14 +66,12 @@ function generateTrajectory(site, windKey) {
   const LANDING_TILT_LIMIT = 18 * Math.PI / 180;
   const CROSS_AREA = Math.PI * 0.6 * 0.6; // m²  (radius 0.6 m)
 
-  // ── Thrust curve (GenericMotor from booster_sim.py) ──
   const THRUST_CURVE = [
     [0.0, 0], [0.5, 30000], [1.5, 63000], [2.0, 66000],
     [10.0, 65000], [30.0, 65500], [44.0, 65000],
     [47.5, 64000], [48.5, 35000], [49.0, 0]
   ];
 
-  // ── Drag tables (booster_sim.py DRAG_OFF / DRAG_ON) ──
   const DRAG_OFF = [
     [0.00, 0.44], [0.30, 0.42], [0.60, 0.46], [0.75, 0.58],
     [0.90, 0.78], [1.00, 0.90], [1.10, 0.84], [1.30, 0.72],
@@ -101,7 +80,6 @@ function generateTrajectory(site, windKey) {
   // Power-on drag ~15% lower (plume base pressure effect)
   const DRAG_ON = DRAG_OFF.map(([m, cd]) => [m, cd * 0.85]);
 
-  // ── ISA atmosphere ──
   function rho(h) {
     if (h <= 0)     return 1.225;
     if (h < 11000)  return 1.225 * Math.pow(1 - 2.2558e-5 * h, 4.2561);
@@ -117,7 +95,6 @@ function generateTrajectory(site, windKey) {
     return 20.05 * Math.sqrt(216.65 + 2.8 * (h - 25000) / 1000);
   }
 
-  // ── Table interpolation ──
   function interp(table, x) {
     if (x <= table[0][0])                 return table[0][1];
     if (x >= table[table.length - 1][0]) return table[table.length - 1][1];
@@ -130,7 +107,6 @@ function generateTrajectory(site, windKey) {
     return table[table.length - 1][1];
   }
 
-  // ── Height-varying wind profile (booster_sim.py) ──
   function windAtH(h) {
     if (h <= 0) return [wu_ref * 0.05, wv_ref * 0.05];
     if (h <= 1000) {
@@ -147,7 +123,6 @@ function generateTrajectory(site, windKey) {
     return [wu_ref * f, wv_ref * f];
   }
 
-  // ── 3-stage cascaded drag descent (booster_sim.py) ──
   // CdS values match the Python AirBrakes stages exactly
   function descentCdS(h, vz) {
     if (vz >= 0) return 0;          // ascending — no augmentation
@@ -156,7 +131,6 @@ function generateTrajectory(site, windKey) {
     return 250.0;                   // stage 3: + landing brake (250 m² total)
   }
 
-  // ── Integration ──
   let vx = 0, vy = 0, vz = 0;
   let px = 0, py = 0, pz = 0;
   const dt = 0.25; // finer step for accuracy at high thrust
