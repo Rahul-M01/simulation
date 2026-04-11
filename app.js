@@ -26,7 +26,6 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 
 const scene = new THREE.Scene();
-// No fog — it muddies depth in a space scene
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 8000);
 camera.position.set(6, 3, 22);
@@ -35,7 +34,6 @@ camera.lookAt(0, 8, 0);
 const ambientLight = new THREE.AmbientLight(0x08091a, 2.5);
 scene.add(ambientLight);
 
-// Primary sun — low angle for dramatic shadows
 const sunLight = new THREE.DirectionalLight(0xfff4e0, 2.8);
 sunLight.position.set(80, 60, 40);
 sunLight.castShadow = true;
@@ -48,32 +46,27 @@ sunLight.shadow.camera.top = 30;
 sunLight.shadow.camera.bottom = -30;
 scene.add(sunLight);
 
-// Blue Earth-reflected fill from below
 const fillLight = new THREE.DirectionalLight(0x2255aa, 0.6);
 fillLight.position.set(-20, -10, -15);
 scene.add(fillLight);
 
-// Cool rim from opposite side
 const rimLight = new THREE.DirectionalLight(0x004488, 0.4);
 rimLight.position.set(-60, 30, -40);
 scene.add(rimLight);
 
 function createStarField() {
-  // Layer 1: dense small stars
   const count = 10000;
   const geom = new THREE.BufferGeometry();
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     const theta = Math.random() * Math.PI * 2;
-    // Bias toward upper hemisphere so stars appear above horizon
     const phi = Math.acos(1 - Math.random() * 1.6);
     const r = 2000 + Math.random() * 1000;
     positions[i*3]   = r * Math.sin(phi) * Math.cos(theta);
     positions[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
     positions[i*3+2] = r * Math.cos(phi);
     const brightness = 0.3 + Math.random() * 0.7;
-    // Slight warm/cool variation
     const warm = Math.random();
     colors[i*3]   = brightness * (0.85 + warm * 0.15);
     colors[i*3+1] = brightness * (0.88 + warm * 0.05);
@@ -84,7 +77,6 @@ function createStarField() {
   const mat = new THREE.PointsMaterial({ size: 0.8, vertexColors: true, sizeAttenuation: true });
   scene.add(new THREE.Points(geom, mat));
 
-  // Layer 2: a few bright foreground stars
   const brightCount = 200;
   const bGeom = new THREE.BufferGeometry();
   const bPos = new Float32Array(brightCount * 3);
@@ -107,7 +99,6 @@ function createGround() {
   const SEGS = 440;
   const geom = new THREE.PlaneGeometry(SIZE, SIZE, SEGS, SEGS);
 
-  // Deterministic hash + value noise + fBm
   const hash = (x, y) => {
     const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
     return s - Math.floor(s);
@@ -143,11 +134,9 @@ function createGround() {
     const y = pos.getY(i); // becomes -worldZ after rotation
     const r = Math.sqrt(x * x + y * y);
 
-    // Pad keep-out: flat inside 4 km, ramp to full terrain by 14 km
     const padMask = smooth(4, 14, r);
     const hills = (fbm(x, y) - 0.5) * 7 * padMask;
 
-    // Distant mountain ring (80–140 km) with noisy ridgeline
     const ringT = 1 - Math.min(1, Math.abs(r - 110) / 35);
     const ridgeNoise = fbm(x * 0.4 + 17, y * 0.4 - 9);
     const mountains = Math.pow(Math.max(0, ringT), 1.6) * (10 + ridgeNoise * 18);
@@ -155,15 +144,14 @@ function createGround() {
     const h = hills + mountains;
     pos.setZ(i, h);
 
-    // Colour by height + slight noise
     const nv = (hash(x * 2.3, y * 2.3) - 0.5) * 0.06;
     let cr, cg, cb;
-    if (h < 0.2)      { cr = 0.10; cg = 0.20; cb = 0.09; } // lowland grass
-    else if (h < 1.5) { cr = 0.13; cg = 0.22; cb = 0.10; } // grass
-    else if (h < 5)   { cr = 0.18; cg = 0.20; cb = 0.12; } // scrub
-    else if (h < 12)  { cr = 0.28; cg = 0.24; cb = 0.18; } // rocky brown
-    else if (h < 20)  { cr = 0.40; cg = 0.38; cb = 0.36; } // bare rock
-    else              { cr = 0.82; cg = 0.84; cb = 0.88; } // snow
+    if (h < 0.2)      { cr = 0.10; cg = 0.20; cb = 0.09; }
+    else if (h < 1.5) { cr = 0.13; cg = 0.22; cb = 0.10; }
+    else if (h < 5)   { cr = 0.18; cg = 0.20; cb = 0.12; }
+    else if (h < 12)  { cr = 0.28; cg = 0.24; cb = 0.18; }
+    else if (h < 20)  { cr = 0.40; cg = 0.38; cb = 0.36; }
+    else              { cr = 0.82; cg = 0.84; cb = 0.88; }
     colors[i * 3    ] = Math.max(0, cr + nv);
     colors[i * 3 + 1] = Math.max(0, cg + nv);
     colors[i * 3 + 2] = Math.max(0, cb + nv);
@@ -201,7 +189,6 @@ function createGround() {
     scene.add(top);
   }
 
-  // Launch pad base
   const padGeom = new THREE.CircleGeometry(2.5, 48);
   const padMat = new THREE.MeshStandardMaterial({
     color: 0x0d1a30, roughness: 0.6, metalness: 0.3,
@@ -212,7 +199,6 @@ function createGround() {
   pad.position.y = 0.02;
   scene.add(pad);
 
-  // Outer accent ring
   const ring1Geom = new THREE.RingGeometry(2.4, 2.55, 48);
   const ring1Mat = new THREE.MeshBasicMaterial({ color: 0x00d4ff, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
   const ring1 = new THREE.Mesh(ring1Geom, ring1Mat);
@@ -220,7 +206,6 @@ function createGround() {
   ring1.position.y = 0.03;
   scene.add(ring1);
 
-  // Inner accent ring
   const ring2Geom = new THREE.RingGeometry(0.6, 0.72, 32);
   const ring2Mat = new THREE.MeshBasicMaterial({ color: 0x00d4ff, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
   const ring2 = new THREE.Mesh(ring2Geom, ring2Mat);
@@ -228,7 +213,6 @@ function createGround() {
   ring2.position.y = 0.03;
   scene.add(ring2);
 
-  // Crosshair lines on pad
   const crossMat = new THREE.MeshBasicMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.35 });
   [[2.5, 0.02, 0.02], [0.02, 0.02, 2.5]].forEach(([w, h, d]) => {
     const bar = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), crossMat);
@@ -236,7 +220,6 @@ function createGround() {
     scene.add(bar);
   });
 
-  // Pad point light for glow on ground
   const padLight = new THREE.PointLight(0x00aaff, 0.8, 6);
   padLight.position.set(0, 0.5, 0);
   scene.add(padLight);
@@ -246,7 +229,6 @@ function createGround() {
 const ground = createGround();
 
 function createAtmosphereLayers() {
-  // Earth sphere — radius 600, sits below scene, surface tangent at y=0
   const earthGeom = new THREE.SphereGeometry(600, 64, 48);
   const earthMat = new THREE.MeshPhongMaterial({
     color: 0x071628,
@@ -258,7 +240,6 @@ function createAtmosphereLayers() {
   earth.position.y = -600;
   scene.add(earth);
 
-  // Atmosphere halo — slightly larger, BackSide glow
   const haloGeom = new THREE.SphereGeometry(610, 64, 32);
   const haloMat = new THREE.MeshBasicMaterial({
     color: 0x0055aa,
@@ -269,7 +250,6 @@ function createAtmosphereLayers() {
   haloMesh.position.y = -600;
   scene.add(haloMesh);
 
-  // Thin horizon glow ring at ground level
   const horizonGeom = new THREE.TorusGeometry(80, 2.5, 8, 80);
   const horizonMat = new THREE.MeshBasicMaterial({
     color: 0x0077cc, transparent: true, opacity: 0.06,
@@ -279,7 +259,6 @@ function createAtmosphereLayers() {
   horizon.position.y = -0.5;
   scene.add(horizon);
 
-  // Altitude haze bands — troposphere, stratosphere, mesosphere (km units)
   [{ y: 12,  r: 120, op: 0.022, col: 0x0055cc },
    { y: 25,  r: 110, op: 0.016, col: 0x003388 },
    { y: 50,  r: 100, op: 0.010, col: 0x001144 },
@@ -295,87 +274,160 @@ createAtmosphereLayers();
 
 function createRocket(color) {
   const group = new THREE.Group();
+  const R = 0.12;
 
-  // Body cylinder
-  const bodyGeom = new THREE.CylinderGeometry(0.12, 0.12, 1.0, 16);
-  const bodyMat = new THREE.MeshStandardMaterial({
-    color: 0xe8eaf6, roughness: 0.3, metalness: 0.8
-  });
-  const body = new THREE.Mesh(bodyGeom, bodyMat);
+  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf4f5fa, roughness: 0.55, metalness: 0.15 });
+  const dirtyWhiteMat = new THREE.MeshStandardMaterial({ color: 0xbdbfc8, roughness: 0.7, metalness: 0.2 });
+  const blackMat = new THREE.MeshStandardMaterial({ color: 0x0d0f13, roughness: 0.85, metalness: 0.2 });
+  const darkMetalMat = new THREE.MeshStandardMaterial({ color: 0x1a1d22, roughness: 0.4, metalness: 0.85 });
+  const sootMat = new THREE.MeshStandardMaterial({ color: 0x1a160f, roughness: 0.95, metalness: 0.1 });
+  const bellMat = new THREE.MeshStandardMaterial({ color: 0x4a4d55, roughness: 0.25, metalness: 0.95 });
+
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.86, 24), whiteMat);
+  body.position.y = 0.05;
   body.castShadow = true;
   group.add(body);
 
-  // Nose cone (ogive)
-  const noseGeom = new THREE.ConeGeometry(0.12, 0.3, 16);
-  const noseMat = new THREE.MeshStandardMaterial({
-    color: 0xccddff, roughness: 0.2, metalness: 0.9
+  const soot = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.003, R * 1.003, 0.14, 24), sootMat);
+  soot.position.y = -0.33;
+  group.add(soot);
+
+  const interstage = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.1, 24), blackMat);
+  interstage.position.y = 0.535;
+  interstage.castShadow = true;
+  group.add(interstage);
+
+  const stripeMat = new THREE.MeshStandardMaterial({
+    color, roughness: 0.4, metalness: 0.4,
+    emissive: color, emissiveIntensity: 0.25,
   });
-  const nose = new THREE.Mesh(noseGeom, noseMat);
-  nose.position.y = 0.65;
+  const stripe = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.005, R * 1.005, 0.03, 24), stripeMat);
+  stripe.position.y = 0.46;
+  group.add(stripe);
+
+  for (let i = 0; i < 4; i++) {
+    const raceway = new THREE.Mesh(
+      new THREE.BoxGeometry(0.012, 0.78, 0.012),
+      darkMetalMat,
+    );
+    raceway.position.set(Math.cos(i * Math.PI / 2) * (R + 0.005), 0.05, Math.sin(i * Math.PI / 2) * (R + 0.005));
+    group.add(raceway);
+  }
+
+  const nose = new THREE.Mesh(new THREE.CylinderGeometry(0.03, R, 0.22, 24), whiteMat);
+  nose.position.y = 0.7;
   nose.castShadow = true;
   group.add(nose);
-
-  // Color stripe (site colour band)
-  const stripeGeom = new THREE.CylinderGeometry(0.121, 0.121, 0.15, 16);
-  const stripeMat = new THREE.MeshStandardMaterial({
-    color: color, roughness: 0.2, metalness: 0.6,
-    emissive: color, emissiveIntensity: 0.4
-  });
-  const stripe = new THREE.Mesh(stripeGeom, stripeMat);
-  stripe.position.y = 0.25;
-  group.add(stripe);
+  const noseCap = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 12), whiteMat);
+  noseCap.position.y = 0.81;
+  group.add(noseCap);
 
   const gridFins = [];
   for (let i = 0; i < 4; i++) {
-    const gfGeom = new THREE.BoxGeometry(0.12, 0.08, 0.01);
-    const gfMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8 });
-    const gf = new THREE.Mesh(gfGeom, gfMat);
-    gf.position.set(Math.cos(i * Math.PI/2) * 0.12, 0.45, Math.sin(i * Math.PI/2) * 0.12);
-    gf.rotation.y = i * Math.PI/2;
-    group.add(gf);
-    gridFins.push(gf);
+    const fin = new THREE.Group();
+    const frameMat = darkMetalMat;
+    const FW = 0.09, FH = 0.065, FT = 0.007;
+
+    const top    = new THREE.Mesh(new THREE.BoxGeometry(FW, FT, 0.015), frameMat);
+    const bottom = new THREE.Mesh(new THREE.BoxGeometry(FW, FT, 0.015), frameMat);
+    top.position.y    =  FH / 2;
+    bottom.position.y = -FH / 2;
+    fin.add(top, bottom);
+
+    const left  = new THREE.Mesh(new THREE.BoxGeometry(FT, FH, 0.015), frameMat);
+    const right = new THREE.Mesh(new THREE.BoxGeometry(FT, FH, 0.015), frameMat);
+    left.position.x  = -FW / 2;
+    right.position.x =  FW / 2;
+    fin.add(left, right);
+
+    for (let k = 1; k < 4; k++) {
+      const v = new THREE.Mesh(new THREE.BoxGeometry(FT * 0.6, FH * 0.95, 0.012), frameMat);
+      v.position.x = -FW / 2 + (FW / 4) * k;
+      fin.add(v);
+      const h = new THREE.Mesh(new THREE.BoxGeometry(FW * 0.95, FT * 0.6, 0.012), frameMat);
+      h.position.y = -FH / 2 + (FH / 4) * k;
+      fin.add(h);
+    }
+
+    const hinge = new THREE.Group();
+    fin.position.x = FW / 2 + 0.005;
+    hinge.add(fin);
+    hinge.rotation.y = -Math.PI / 2;
+    hinge.visible = false;
+
+    const pivot = new THREE.Group();
+    pivot.add(hinge);
+
+    const angle = i * Math.PI / 2;
+    pivot.position.set(Math.cos(angle) * R, 0.50, Math.sin(angle) * R);
+    pivot.rotation.y = -angle;
+    group.add(pivot);
+    pivot.userData.hinge = hinge;
+    gridFins.push(pivot);
   }
 
   const landingLegs = [];
+  const STRUT_LEN = 0.42;
   for (let i = 0; i < 4; i++) {
     const legGroup = new THREE.Group();
-    const legGeom = new THREE.CylinderGeometry(0.01, 0.01, 0.3, 8);
-    const legMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, metalness: 0.5 });
-    const leg = new THREE.Mesh(legGeom, legMat);
-    leg.position.y = -0.15;
-    legGroup.add(leg);
-    legGroup.position.set(Math.cos(i * Math.PI/2) * 0.12, -0.4, Math.sin(i * Math.PI/2) * 0.12);
-    legGroup.rotation.y = i * Math.PI/2;
-    legGroup.rotation.z = 0.1; // Stowed
+
+    const mainStrut = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.018, STRUT_LEN, 10),
+      dirtyWhiteMat,
+    );
+    mainStrut.position.y = STRUT_LEN / 2;
+    legGroup.add(mainStrut);
+
+    const foot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.038, 0.015, 12),
+      darkMetalMat,
+    );
+    foot.position.y = STRUT_LEN + 0.008;
+    legGroup.add(foot);
+
+    const angle = i * Math.PI / 2;
+    legGroup.position.set(Math.cos(angle) * (R - 0.005), -0.4, Math.sin(angle) * (R - 0.005));
+    legGroup.rotation.y = -angle;
+    legGroup.rotation.z = 0;
     group.add(legGroup);
     landingLegs.push(legGroup);
   }
 
-  // Engine bell
-  const nozzleGeom = new THREE.CylinderGeometry(0.09, 0.13, 0.12, 16);
-  const nozzleMat = new THREE.MeshStandardMaterial({
-    color: 0x445566, roughness: 0.2, metalness: 0.95
-  });
-  const nozzle = new THREE.Mesh(nozzleGeom, nozzleMat);
-  nozzle.position.y = -0.55;
-  group.add(nozzle);
+  const octaweb = new THREE.Mesh(
+    new THREE.CylinderGeometry(R * 1.08, R * 0.95, 0.05, 24),
+    blackMat,
+  );
+  octaweb.position.y = -0.425;
+  group.add(octaweb);
 
-  // Engine glow point light
+  const centerBell = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.032, 0.042, 0.055, 16),
+    bellMat,
+  );
+  centerBell.position.y = -0.475;
+  group.add(centerBell);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const bell = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.024, 0.032, 0.05, 14),
+      bellMat,
+    );
+    bell.position.set(Math.cos(a) * 0.07, -0.475, Math.sin(a) * 0.07);
+    group.add(bell);
+  }
+
   const engineLight = new THREE.PointLight(0xff6030, 0, 2);
-  engineLight.position.y = -0.6;
+  engineLight.position.y = -0.55;
   group.add(engineLight);
 
-  // Exhaust plume (cone particle effect using geometry)
-  const plumeGeom = new THREE.ConeGeometry(0.08, 0.5, 12);
-  const plumeMat = new THREE.MeshBasicMaterial({
-    color: 0xff6030, transparent: true, opacity: 0.6
-  });
-  const plume = new THREE.Mesh(plumeGeom, plumeMat);
+  const plume = new THREE.Mesh(
+    new THREE.ConeGeometry(0.09, 0.55, 14),
+    new THREE.MeshBasicMaterial({ color: 0xff6030, transparent: true, opacity: 0.6 }),
+  );
   plume.rotation.x = Math.PI;
-  plume.position.y = -0.85;
+  plume.position.y = -0.82;
   group.add(plume);
 
-  // Scale rocket for visibility in km-scale scene
   group.scale.setScalar(1.4);
 
   return { group, engineLight, plume, stripeMat, gridFins, landingLegs };
@@ -401,7 +453,6 @@ function updateParticles(pos, vel, isActive, isLanding) {
       p.mesh.visible = true;
       p.mesh.position.copy(pos);
       p.life = 1.0;
-      // Emit downwards with some spread
       p.vel.copy(vel).multiplyScalar(-0.05).add(new THREE.Vector3(
         (Math.random() - 0.5) * 0.02,
         (Math.random() - 0.5) * 0.02,
@@ -427,7 +478,6 @@ function createTrajectoryTube(trajectory, color, opacity = 0.8) {
 
   const group = new THREE.Group();
 
-  // Colour phases
   const phaseColors = {
     powered: new THREE.Color(0xff6030),
     coast:   new THREE.Color(0x00d4ff),
@@ -436,7 +486,6 @@ function createTrajectoryTube(trajectory, color, opacity = 0.8) {
     landing: new THREE.Color(0x2ed573),
   };
 
-  // Build segments by phase
   let currentPhase = pts[0].phase;
   let segPoints = [new THREE.Vector3(pts[0].x, pts[0].z, pts[0].y)];
 
@@ -451,7 +500,6 @@ function createTrajectoryTube(trajectory, color, opacity = 0.8) {
     const tube = new THREE.Mesh(tubeGeom, mat);
     group.add(tube);
 
-    // Glow duplicate (thicker, more transparent)
     const glowGeom = new THREE.TubeGeometry(curve, points.length * 2, 0.1, 6, false);
     const glowMat = new THREE.MeshBasicMaterial({
       color: col, transparent: true, opacity: opacity * 0.15
@@ -473,7 +521,6 @@ function createTrajectoryTube(trajectory, color, opacity = 0.8) {
     }
   }
 
-  // Landing marker (X)
   const lastPt = pts[pts.length - 1];
   const markerGeom1 = new THREE.BoxGeometry(0.3, 0.03, 0.02);
   const markerGeom2 = new THREE.BoxGeometry(0.3, 0.03, 0.02);
@@ -486,7 +533,6 @@ function createTrajectoryTube(trajectory, color, opacity = 0.8) {
   m2.position.set(lastPt.x, 0.05, lastPt.y);
   group.add(m1, m2);
 
-  // Landing ring pulse
   const ringGeom = new THREE.RingGeometry(0.3, 0.35, 24);
   const ringMat = new THREE.MeshBasicMaterial({
     color, transparent: true, opacity: 0.6, side: THREE.DoubleSide
@@ -496,7 +542,6 @@ function createTrajectoryTube(trajectory, color, opacity = 0.8) {
   ring.position.set(lastPt.x, 0.06, lastPt.y);
   group.add(ring);
 
-  // Launch spike
   const spikeGeom = new THREE.SphereGeometry(0.12, 12, 12);
   const spikeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   const spike = new THREE.Mesh(spikeGeom, spikeMat);
@@ -533,7 +578,6 @@ function setTrajectoryVisibility(visible) {
 function buildScene() {
   clearScene();
 
-  // Create trajectories for all sites (overview shows all)
   state.displaySites.forEach(siteName => {
     const site = SITES[siteName];
     const traj = TRAJECTORIES[siteName][state.activeWind];
@@ -548,7 +592,6 @@ function buildScene() {
       trajectoryGroups[siteName] = trajGroup;
     }
 
-    // Ground track (projected shadow)
     const pts2d = traj.points.filter((_, i) => i % 5 === 0).map(p =>
       new THREE.Vector3(p.x, 0.02, p.y)
     );
@@ -564,7 +607,6 @@ function buildScene() {
     }
   });
 
-  // Create animated rocket for active site
   const site = SITES[state.activeSite];
   const rocket = createRocket(site.colorHex);
   scene.add(rocket.group);
@@ -582,14 +624,12 @@ function drawMiniChart(trajectory, currentIdx) {
   const W = miniCanvas.width, H = miniCanvas.height;
   miniCtx.clearRect(0, 0, W, H);
 
-  // Background
   miniCtx.fillStyle = 'rgba(10,12,30,0.6)';
   miniCtx.fillRect(0, 0, W, H);
 
   const maxAlt = Math.max(...pts.map(p => p.z));
   const maxT   = pts[pts.length - 1].t;
 
-  // Draw altitude curve
   const gradient = miniCtx.createLinearGradient(0, 0, 0, H);
   gradient.addColorStop(0, 'rgba(0,212,255,0.8)');
   gradient.addColorStop(1, 'rgba(123,47,247,0.2)');
@@ -605,7 +645,6 @@ function drawMiniChart(trajectory, currentIdx) {
   miniCtx.lineWidth = 1.5;
   miniCtx.stroke();
 
-  // Fill under curve
   if (pts.length > 0) {
     miniCtx.lineTo((pts[pts.length-1].t / maxT) * W, H);
     miniCtx.lineTo(0, H);
@@ -614,7 +653,6 @@ function drawMiniChart(trajectory, currentIdx) {
     miniCtx.fill();
   }
 
-  // Current position marker
   if (currentIdx < pts.length) {
     const cp = pts[currentIdx];
     const cx = (cp.t / maxT) * W;
@@ -633,7 +671,6 @@ function drawMiniChart(trajectory, currentIdx) {
     miniCtx.stroke();
   }
 
-  // Phase labels
   miniCtx.font = '7px Inter';
   miniCtx.fillStyle = 'rgba(255,255,255,0.3)';
   miniCtx.fillText('LAUNCH', 2, H - 3);
@@ -649,8 +686,8 @@ const liveDot = document.querySelector('.live-dot');
 
 const phaseLabels = {
   powered: { label: 'POWERED ASCENT',      color: '#ff6030' },
-  coast:   { label: 'COAST — NEAR SPACE',  color: '#00d4ff' },
-  entry:   { label: 'ENTRY — GRID FINS',   color: '#ffaa00' },
+  coast:   { label: 'COAST / NEAR SPACE',  color: '#00d4ff' },
+  entry:   { label: 'ENTRY / GRID FINS',   color: '#ffaa00' },
   descent: { label: 'CONTROLLED DESCENT',  color: '#7b2ff7' },
   landing: { label: 'LANDING SEQUENCE',    color: '#2ed573' },
 };
@@ -658,7 +695,6 @@ const phaseLabels = {
 function updateTelemetry(pt) {
   if (!pt) return;
 
-  // Cleanup for end state (Touchdown)
   const isEnd = state.frameIdx >= state.trajectory.points.length - 1;
   const dispAlt = isEnd ? 0 : pt.z;
   const dispSpd = isEnd ? 0 : pt.speed;
@@ -673,10 +709,7 @@ function updateTelemetry(pt) {
   flightPhaseEl.textContent = ph.label;
   liveDot.style.background  = ph.color;
 
-  // Status Annunciator Logic
   updateAnnunciator(pt);
-
-  // Background sky transition
   updateSkyColor(dispAlt);
 
   const pct = state.frameIdx / (state.trajectory.points.length - 1);
@@ -709,7 +742,6 @@ let lastStatus = "";
 const annunciatorStates = { entry: false, landing: false };
 
 function updateSkyColor(alt) {
-  // 0 km = deep navy, 20 km = dark blue-black, 80+ km = true space black
   const t = Math.min(1, alt / 80);
   const r = Math.round(2  * (1 - t));
   const g = Math.round(4  * (1 - t));
@@ -752,7 +784,6 @@ function updateCamera(rocketPos) {
     desiredPos = cameraOffset.overview.clone();
     desiredTarget = new THREE.Vector3(3, 0, 3);
   } else {
-    // top
     desiredPos = new THREE.Vector3(rocketPos.x, 50, rocketPos.z);
     desiredTarget = new THREE.Vector3(rocketPos.x, 0, rocketPos.z);
   }
@@ -805,7 +836,6 @@ function animate() {
   const traj = state.trajectory;
   if (!traj) { renderer.render(scene, camera); return; }
 
-  // Advance frame
   if (state.playing) {
     for (let s = 0; s < state.speed; s++) {
       if (state.frameIdx < traj.points.length - 1) {
@@ -813,7 +843,7 @@ function animate() {
       } else {
         state.playing = false;
         document.getElementById('btnPlay').textContent = '▶';
-        showToast('🛬 Mission Complete — Booster Landed');
+        showToast('Mission complete. Booster landed.');
         break;
       }
     }
@@ -824,7 +854,6 @@ function animate() {
 
   const rocketPos = new THREE.Vector3(pt.x, pt.z, pt.y);
 
-  // Update rocket position & orientation
   if (rocketObj) {
     rocketObj.group.position.copy(rocketPos);
     if (rocketObj.group.position.y < _rocketGroundOffset) {
@@ -833,7 +862,7 @@ function animate() {
     const velocity = new THREE.Vector3(pt.vx || 0, pt.vz || 0, pt.vy || 0);
     const velocityDir = velocity.clone();
     const velLen = velocityDir.length();
-    if (velLen > 0.001) {
+    if (velLen > 10) {
       velocityDir.divideScalar(velLen);
       let orientDir = velocityDir.clone();
       if (pt.phase !== 'powered') {
@@ -841,80 +870,89 @@ function animate() {
         if (clearlyDescending) orientDir.negate();
       }
 
-      if (pt.phase === 'coast') {
-        const apexBlend = THREE.MathUtils.clamp(1 - velLen / 90, 0, 0.85);
-        orientDir.lerp(new THREE.Vector3(0, 1, 0), apexBlend);
+      if (pt.phase === 'entry' || pt.phase === 'descent' || pt.phase === 'landing' || pt.landingBurn) {
+        const startAlt = 40.0;
+        const endAlt = 0.3;
+        const t = THREE.MathUtils.clamp((startAlt - pt.z) / (startAlt - endAlt), 0, 1);
+        const eased = t * t * (3 - 2 * t);
+        orientDir.lerp(new THREE.Vector3(0, 1, 0), eased);
         orientDir.normalize();
       }
 
-      // Landing: quadratic blend toward world-up so the rocket is perfectly vertical at touchdown.
-      // pt.z is altitude in km; landing phase spans roughly 0–1 km.
-      if (pt.phase === 'landing' || pt.landingBurn) {
-        const blend = Math.pow(1.0 - Math.min(pt.z, 1.0), 2);
-        orientDir.lerp(new THREE.Vector3(0, 1, 0), blend);
-        orientDir.normalize();
-      }
-
-      // Avoid gimbal lock when pointing straight up or down
       const worldUp = Math.abs(orientDir.y) > 0.999
         ? new THREE.Vector3(0, 0, 1)
         : new THREE.Vector3(0, 1, 0);
       const mat4 = new THREE.Matrix4().lookAt(new THREE.Vector3(0, 0, 0), orientDir, worldUp);
       const targetQuat = new THREE.Quaternion().setFromRotationMatrix(mat4);
-      targetQuat.multiply(_rocketCorrQuat); // aligns nose (+Y local) with orientDir
+      targetQuat.multiply(_rocketCorrQuat);
 
-      // Slerp rates: slow deliberate flip during coast; fast correction during landing
-      let slerpRate = 0.12;
-      if (pt.phase === 'coast')   slerpRate = velLen < 120 ? 0.012 : 0.02;
-      else if (pt.phase === 'landing' || pt.landingBurn) slerpRate = 0.20;
+      let slerpRate = 0.035;
+      if (pt.phase === 'powered')      slerpRate = 0.05;
       rocketObj.group.quaternion.slerp(targetQuat, slerpRate);
     }
 
-    // Engine glow & plume during powered phase
     const isPowered = pt.phase === 'powered';
     const isLanding = !!pt.landingBurn;
-    const isActive = isPowered || isLanding;
+    const isAttitudeBurn = !isPowered && !isLanding &&
+      (pt.phase === 'coast' || pt.phase === 'entry' || pt.phase === 'descent');
+    const isActive = isPowered || isLanding || isAttitudeBurn;
 
-    const glowIntensity = isActive ? 3 + Math.sin(animFrameCounter * 0.3) * 0.5 : 0;
-    rocketObj.engineLight.intensity = glowIntensity * 0.5;
-    rocketObj.engineLight.color.set(isPowered ? 0xff6030 : 0x30aaff);
+    let glowIntensity = 0;
+    if (isPowered || isLanding) glowIntensity = 3 + Math.sin(animFrameCounter * 0.3) * 0.5;
+    else if (isAttitudeBurn)    glowIntensity = 2.0 + Math.sin(animFrameCounter * 0.4) * 0.4;
+    rocketObj.engineLight.intensity = glowIntensity * 0.6;
+    if (isPowered)           { rocketObj.engineLight.color.set(0xff6030); rocketObj.plume.material.color.set(0xffb060); }
+    else if (isLanding)      { rocketObj.engineLight.color.set(0x30aaff); rocketObj.plume.material.color.set(0x88ccff); }
+    else                     { rocketObj.engineLight.color.set(0x88ddff); rocketObj.plume.material.color.set(0x88ddff); }
     rocketObj.plume.visible = isActive;
 
-    updateParticles(rocketPos, velocityDir, isActive, isLanding);
+    updateParticles(rocketPos, velocityDir, isActive, isLanding || isAttitudeBurn);
 
-    // Grid fins & Landing legs animation
-    const isDescent = pt.phase === 'descent' || pt.phase === 'landing' || pt.landingBurn;
+    const isDescent = pt.phase === 'entry' || pt.phase === 'descent' || pt.phase === 'landing' || pt.landingBurn;
     rocketObj.gridFins.forEach(gf => {
-      gf.rotation.x = isDescent ? Math.sin(animFrameCounter * 0.1) * 0.3 : 0;
+      const hinge = gf.userData.hinge;
+      if (isDescent) {
+        hinge.visible = true;
+        hinge.rotation.y += (0 - hinge.rotation.y) * 0.05;
+      } else {
+        hinge.rotation.y = -Math.PI / 2;
+        hinge.visible = false;
+        gf.rotation.z = 0;
+        gf.rotation.x = 0;
+        return;
+      }
+
+      const deployed = hinge.rotation.y > -0.3;
+      const targetTilt = deployed ? -0.55 : 0;
+      gf.rotation.z += (targetTilt - gf.rotation.z) * 0.04;
+      gf.rotation.x = deployed ? Math.sin(animFrameCounter * 0.08) * 0.08 : 0;
     });
     
     const isLandingPhase = pt.phase === 'landing' || pt.landingBurn;
     rocketObj.landingLegs.forEach(leg => {
-      const targetRot = isLandingPhase ? 1.0 : 0.1;
+      const targetRot = isLandingPhase ? -2.15 : 0;
       leg.rotation.z += (targetRot - leg.rotation.z) * 0.05;
     });
 
     if (rocketObj.plume.visible) {
-      rocketObj.plume.material.opacity = 0.4 + Math.sin(animFrameCounter * 0.5) * 0.2;
-      const landingScale = 0.35 + (pt.landingThrottle || 0) * 0.45;
-      const plumeScale = isPowered
-        ? 1.0 + Math.random() * 0.15
-        : landingScale + Math.random() * 0.08;
+      const baseOpacity = isAttitudeBurn ? 0.55 : 0.4;
+      rocketObj.plume.material.opacity = baseOpacity + Math.sin(animFrameCounter * 0.5) * 0.15;
+      let plumeScale;
+      if (isPowered)           plumeScale = 1.0 + Math.random() * 0.15;
+      else if (isLanding)      plumeScale = 0.35 + (pt.landingThrottle || 0) * 0.45 + Math.random() * 0.08;
+      else                     plumeScale = 0.55 + Math.random() * 0.12;
       rocketObj.plume.scale.setScalar(plumeScale);
     }
   }
 
-  // Camera
   updateCamera(rocketPos);
 
-  // Telemetry (every 2 frames for performance)
   if (animFrameCounter % 2 === 0) {
     updateTelemetry(pt);
     drawMiniChart(traj, state.frameIdx);
   }
 
-  // Animate landing rings pulse
-  animFrameCounter % 30 === 0 && updateTrajectoryOpacities();
+  if (animFrameCounter % 30 === 0) updateTrajectoryOpacities();
 
   renderer.render(scene, camera);
 }
@@ -966,7 +1004,7 @@ window.selectSite = function(key) {
   updateRightPanel();
   buildSitePanel();
   setViewMode('follow');
-  showToast(`🚀 Loading ${SITES[key].fullName}`);
+  showToast(`Loading ${SITES[key].fullName}`);
 };
 
 window.selectWind = function(key) {
@@ -976,7 +1014,7 @@ window.selectWind = function(key) {
   updateRightPanel();
   document.querySelectorAll('.wind-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(`windBtn_${key}`).classList.add('active');
-  showToast(`💨 Wind: ${WIND_CONDITIONS[key].label} — ${WIND_CONDITIONS[key].speed}`);
+  showToast(`Wind: ${WIND_CONDITIONS[key].label} (${WIND_CONDITIONS[key].speed})`);
 };
 
 function setViewMode(mode) {
@@ -1001,29 +1039,27 @@ function updateTrajectoryToggleLabel() {
   btn.classList.toggle('active', state.showTrajectories);
 }
 
-// Playback
 document.getElementById('btnPlay').onclick = () => {
   if (state.frameIdx >= state.trajectory.points.length - 1) {
     state.frameIdx = 0;
   }
   state.playing = !state.playing;
   document.getElementById('btnPlay').textContent = state.playing ? '⏸' : '▶';
-  if (state.playing) showToast('▶ Simulation Running');
+  if (state.playing) showToast('Simulation running');
 };
 
 document.getElementById('btnRewind').onclick = () => {
   state.frameIdx = 0;
   state.playing = false;
   document.getElementById('btnPlay').textContent = '▶';
-  
-  // Reset annunciator states
+
   lastStatus = "";
   annunciatorStates.entry = false;
   annunciatorStates.landing = false;
 
   updateTelemetry(state.trajectory.points[0]);
   drawMiniChart(state.trajectory, 0);
-  showToast('⏮ Reset to launch');
+  showToast('Reset to launch');
 };
 
 document.getElementById('btnFwd').onclick = () => {
@@ -1113,12 +1149,11 @@ function init() {
   document.getElementById('speedVal').textContent = 'x' + state.speed;
 
   setTimeout(() => {
-    showToast('🚀 System Launch Sequence Initialized…');
-    // Ensure playback starts reliably
+    showToast('System ready');
     setTimeout(() => {
       state.playing = true;
       document.getElementById('btnPlay').textContent = '⏸';
-      showToast('▶ Ignition Sequence Start');
+      showToast('Ignition sequence start');
     }, 1000);
   }, 1000);
 

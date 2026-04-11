@@ -1,46 +1,39 @@
-# UK Reusable Booster — 3D Mission Simulation
+# UK Reusable Booster
 
-Interactive Three.js visualisation of a reusable orbital-class booster launching and landing from UK spaceports. Trajectories are precomputed from a Python flight-dynamics sim (`booster_sim.py`) and replayed in the browser, so the physics (thrust, drag, wind, landing burn) stays consistent with the offline model.
+Interactive 3D simulation of a reusable orbital-class booster launching and landing from UK spaceports. Trajectories are generated in-browser by a flight-dynamics model (thrust curve, ISA atmosphere, drag tables, log-law wind with Ekman veering, guided landing burn) and rendered with Three.js.
 
-## What it shows
+## What's in it
 
-- Five UK launch sites: Sutherland, SaxaVord, Prestwick, Snowdonia, Cornwall
-- Three wind conditions (calm / moderate / strong south-westerlies)
-- Full flight profile: powered ascent, coast to apogee, entry burn, grid-fin descent, landing burn
+- Five launch sites: Sutherland, SaxaVord, Prestwick, Snowdonia, Cornwall
+- Four wind conditions (calm through storm) with altitude-varying profile
+- Full flight: powered ascent, coast to apogee, entry, grid-fin descent, landing burn
 - Live telemetry: altitude, speed, Mach, mission time, phase
-- Procedural biome around the launch pad (terrain, distant mountains, vegetation)
-- Camera modes: follow, overview, top-down
-- Toggleable trajectory trails across sites
+- Procedural terrain, mountains and vegetation around the pad
+- Follow / overview / top-down cameras
+- Trajectory trails toggle across all sites
 
-## Running locally
+## Running
 
 ```bash
 npm install
 npm start
 ```
 
-Then open http://localhost:8080.
-
-The app is fully static — no backend, no build step, no API keys. Any static host works.
+Open http://localhost:8080. No backend, no build step.
 
 ## Hosting
 
 ### Cloudflare Pages
 
-1. Push to GitHub.
-2. Create a new Pages project and connect the repo.
-3. Framework preset: `None`. Build command: blank. Output directory: `/`.
-4. Deploy. The `_headers` file adds basic security headers automatically.
+Connect the repo, framework preset `None`, build command blank, output directory `/`. `_headers` supplies security headers.
 
 ### GitHub Pages
 
-1. Push to GitHub.
-2. `Settings → Pages`, source = default branch root.
-3. The `.nojekyll` file prevents Jekyll from mangling the site. GitHub Pages ignores `_headers`, so Cloudflare is the better option if you care about those headers.
+Settings → Pages, source = default branch root. `.nojekyll` is already in place.
 
 ## Files
 
 - `index.html`, `style.css` — layout and UI
 - `app.js` — Three.js scene, animation loop, camera, telemetry
-- `data.js` — site definitions, wind profiles, trajectory data
+- `data.js` — sites, wind profiles, trajectory integrator
 - `_headers`, `.nojekyll` — hosting config

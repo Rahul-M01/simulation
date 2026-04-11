@@ -53,18 +53,18 @@ function generateTrajectory(site, windKey) {
   const wu_ref = wind.wu, wv_ref = wind.wv;
   const headingRad = (site.heading - 90) * Math.PI / 180;
 
-  const DRY_MASS   = 1500;   // kg
-  const PROP_MASS  = 1100;   // kg
-  const WET_MASS   = 2600;   // kg
-  const BURN_TIME  = 49;     // s
+  const DRY_MASS   = 1500;
+  const PROP_MASS  = 1100;
+  const WET_MASS   = 2600;
+  const BURN_TIME  = 49;
   const G0         = 9.80665;
-  const LAUNCH_INCLINATION = 89 * Math.PI / 180; // RocketPy uses 89 deg as near-vertical launch
-  const RAIL_LENGTH = 20;                 // meters, matching booster_sim.py
-  const LANDING_BURN_START = 1800;        // meters AGL for active landing guidance
-  const LANDING_THRUST_MAX = 45000;       // N, throttled single-engine class landing burn
-  const LANDING_RESPONSE = 1.8;           // seconds, smooth velocity tracking
+  const LAUNCH_INCLINATION = 89 * Math.PI / 180;
+  const RAIL_LENGTH = 20;
+  const LANDING_BURN_START = 1800;
+  const LANDING_THRUST_MAX = 45000;
+  const LANDING_RESPONSE = 1.8;
   const LANDING_TILT_LIMIT = 18 * Math.PI / 180;
-  const CROSS_AREA = Math.PI * 0.6 * 0.6; // m²  (radius 0.6 m)
+  const CROSS_AREA = Math.PI * 0.6 * 0.6;
 
   const THRUST_CURVE = [
     [0.0, 0], [0.5, 30000], [1.5, 63000], [2.0, 66000],
@@ -77,7 +77,6 @@ function generateTrajectory(site, windKey) {
     [0.90, 0.78], [1.00, 0.90], [1.10, 0.84], [1.30, 0.72],
     [1.50, 0.64], [2.00, 0.55], [3.00, 0.48], [5.00, 0.40]
   ];
-  // Power-on drag ~15% lower (plume base pressure effect)
   const DRAG_ON = DRAG_OFF.map(([m, cd]) => [m, cd * 0.85]);
 
   function rho(h) {
@@ -88,10 +87,9 @@ function generateTrajectory(site, windKey) {
     return           0.0020 * Math.exp(-1.5e-4   * (h - 47000));
   }
 
-  // ISA sound speed (temperature-correct)
   function soundSpeed(h) {
     if (h < 11000) return 20.05 * Math.sqrt(288.15 - 6.5 * h / 1000);
-    if (h < 25000) return 295.1; // isothermal layer
+    if (h < 25000) return 295.1;
     return 20.05 * Math.sqrt(216.65 + 2.8 * (h - 25000) / 1000);
   }
 
@@ -107,33 +105,53 @@ function generateTrajectory(site, windKey) {
     return table[table.length - 1][1];
   }
 
-  function windAtH(h) {
-    if (h <= 0) return [wu_ref * 0.05, wv_ref * 0.05];
-    if (h <= 1000) {
-      const z0 = 0.03;
-      const f = Math.log(Math.max(h, z0) / z0) / Math.log(10 / z0);
-      return [wu_ref * Math.min(f, 1.0), wv_ref * Math.min(f, 1.0)];
-    }
-    if (h <= 11000) {
-      const f = 1.0 + 0.6 * (h - 1000) / 10000;
-      return [wu_ref * f, wv_ref * f];
-    }
-    if (h <= 13000) return [wu_ref * 1.6, wv_ref * 1.6];  // jet stream
-    const f = Math.max(0.1, 1.6 - 1.5 * (h - 13000) / 30000);
-    return [wu_ref * f, wv_ref * f];
+  function rotateWind(u, v, deg) {
+    const r = deg * Math.PI / 180;
+    const c = Math.cos(r), s = Math.sin(r);
+    return [u * c - v * s, u * s + v * c];
   }
 
-  // CdS values match the Python AirBrakes stages exactly
+  function windAtH(h) {
+    const z0 = 0.1;
+    const refH = 10;
+    const logRef = Math.log(refH / z0);
+    let f, veer;
+    if (h <= 0.3) {
+      f = 0.25;
+      veer = -25;
+    } else if (h <= 1500) {
+      f = Math.log(h / z0) / logRef;
+      veer = -25 * (1 - h / 1500);
+    } else if (h <= 11000) {
+      const f1500 = Math.log(1500 / z0) / logRef;
+      f = f1500 + (3.2 - f1500) * (h - 1500) / 9500;
+      veer = 0;
+    } else if (h <= 13000) {
+      f = 3.6;
+      veer = 5;
+    } else if (h <= 25000) {
+      f = Math.max(0.6, 3.6 - 2.8 * (h - 13000) / 12000);
+      veer = 0;
+    } else {
+      f = 0.4;
+      veer = 0;
+    }
+    let u = wu_ref * f;
+    let v = wv_ref * f;
+    if (veer !== 0) [u, v] = rotateWind(u, v, veer);
+    return [u, v];
+  }
+
   function descentCdS(h, vz) {
-    if (vz >= 0) return 0;          // ascending — no augmentation
-    if (h > 10000) return 25.0;     // stage 1: grid fins (25 m²)
-    if (h > 1000)  return 50.0;     // stage 2: + entry brake (50 m² total)
-    return 250.0;                   // stage 3: + landing brake (250 m² total)
+    if (vz >= 0)   return 0;
+    if (h > 10000) return 25.0;
+    if (h > 1000)  return 50.0;
+    return 250.0;
   }
 
   let vx = 0, vy = 0, vz = 0;
   let px = 0, py = 0, pz = 0;
-  const dt = 0.25; // finer step for accuracy at high thrust
+  const dt = 0.25;
   const points = [];
   let apogeeTime = 0;
   let liftoffTime = null;
@@ -160,7 +178,6 @@ function generateTrajectory(site, windKey) {
     const cs     = soundSpeed(Math.max(0, h));
     const [wu, wv] = windAtH(h);
 
-    // Airspeed relative to local wind
     const relvx = vx - wu;
     const relvy = vy - wv;
     const relSpd = Math.sqrt(relvx*relvx + relvy*relvy + vz*vz);
@@ -169,7 +186,6 @@ function generateTrajectory(site, windKey) {
     const dynPressKPa = 0.5 * rhoH * relSpd * relSpd / 1000;
     if (dynPressKPa > maxDynPressKPa) maxDynPressKPa = dynPressKPa;
 
-    // Body drag
     const dragTable = isPowered ? DRAG_ON : DRAG_OFF;
     const cd  = interp(dragTable, mach);
     const Fd  = cd * 0.5 * rhoH * relSpd * relSpd * CROSS_AREA;
@@ -177,7 +193,6 @@ function generateTrajectory(site, windKey) {
     const Fdy = relSpd > 0.01 ? -Fd * (relvy / relSpd) : 0;
     const Fdz = relSpd > 0.01 ? -Fd * (vz   / relSpd) : 0;
 
-    // Descent drag augmentation
     const cdS = landingBurnActive ? 18.0 : descentCdS(h, vz);
     let FaugX = 0, FaugY = 0, FaugZ = 0;
     if (cdS > 0 && relSpd > 0.01) {
@@ -216,7 +231,6 @@ function generateTrajectory(site, windKey) {
       }
     }
 
-    // Thrust — small gravity-turn tilt (0.04 rad) toward site heading
     const F_thrust = isPowered ? interp(THRUST_CURVE, t) : 0;
     const Ftx = isPowered ? F_thrust * railUnit.x : 0;
     const Fty = isPowered ? F_thrust * railUnit.y : 0;
@@ -261,10 +275,8 @@ function generateTrajectory(site, windKey) {
       }
     }
 
-    // Touchdown — only valid after burnout (during powered phase the pad holds the rocket)
     if (pz < 0) {
       if (isPowered) {
-        // Still on launch pad / rail — clamp until thrust exceeds weight
         pz = 0;
         if (vz < 0) vz = 0;
       } else {
@@ -283,7 +295,6 @@ function generateTrajectory(site, windKey) {
 
     if (vz < 0 && apogeeTime === 0) apogeeTime = t;
 
-    // Phase
     let phase;
     if (isPowered)            phase = 'powered';
     else if (vz >= 0)         phase = 'coast';
@@ -326,7 +337,6 @@ function generateTrajectory(site, windKey) {
   };
 }
 
-// Pre-generate all trajectories
 const TRAJECTORIES = {};
 for (const [key, site] of Object.entries(SITES)) {
   TRAJECTORIES[key] = {};
