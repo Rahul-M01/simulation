@@ -53,18 +53,25 @@ function generateTrajectory(site, windKey) {
   const wu_ref = wind.wu, wv_ref = wind.wv;
   const headingRad = (site.heading - 90) * Math.PI / 180;
 
-  const DRY_MASS   = 1500;
-  const PROP_MASS  = 1100;
-  const WET_MASS   = 2600;
-  const BURN_TIME  = 49;
-  const G0         = 9.80665;
+  const DRY_MASS         = 1300;
+  const ASCENT_PROP_MASS = 1100;
+  const LANDING_PROP_MASS = 320;
+  const WET_MASS         = DRY_MASS + ASCENT_PROP_MASS + LANDING_PROP_MASS;
+  const BURN_TIME        = 49;
+  const G0               = 9.80665;
+  const ASCENT_ISP       = 290;
+  const LANDING_ISP      = 285;
   const LAUNCH_INCLINATION = 89 * Math.PI / 180;
   const RAIL_LENGTH = 20;
   const LANDING_BURN_START = 1800;
   const LANDING_THRUST_MAX = 45000;
-  const LANDING_RESPONSE = 1.8;
-  const LANDING_TILT_LIMIT = 18 * Math.PI / 180;
-  const CROSS_AREA = Math.PI * 0.6 * 0.6;
+  const LANDING_THRUST_MIN = 0.25 * LANDING_THRUST_MAX;
+  const LANDING_RESPONSE = 1.4;
+  const LANDING_TILT_LIMIT = 22 * Math.PI / 180;
+  const LANDING_DECEL_TARGET = 8.0;
+  const LANDING_VZ_CAP = 180;
+  const ROCKET_RADIUS = 0.6;
+  const CROSS_AREA = Math.PI * ROCKET_RADIUS * ROCKET_RADIUS;
 
   const THRUST_CURVE = [
     [0.0, 0], [0.5, 30000], [1.5, 63000], [2.0, 66000],
@@ -88,9 +95,13 @@ function generateTrajectory(site, windKey) {
   }
 
   function soundSpeed(h) {
-    if (h < 11000) return 20.05 * Math.sqrt(288.15 - 6.5 * h / 1000);
-    if (h < 25000) return 295.1;
-    return 20.05 * Math.sqrt(216.65 + 2.8 * (h - 25000) / 1000);
+    let T;
+    if (h < 11000)      T = 288.15 - 0.0065 * h;
+    else if (h < 20000) T = 216.65;
+    else if (h < 32000) T = 216.65 + 0.0010 * (h - 20000);
+    else if (h < 47000) T = 228.65 + 0.0028 * (h - 32000);
+    else                T = 270.65;
+    return 20.0468 * Math.sqrt(T);
   }
 
   function interp(table, x) {
@@ -142,16 +153,15 @@ function generateTrajectory(site, windKey) {
     return [u, v];
   }
 
+  const GRID_FIN_CDS = 1.4;
+
   function descentCdS(h, vz) {
-    if (vz >= 0)   return 0;
-    if (h > 10000) return 25.0;
-    if (h > 1000)  return 50.0;
-    return 250.0;
+    return vz < 0 && h < 60000 ? GRID_FIN_CDS : 0;
   }
 
   let vx = 0, vy = 0, vz = 0;
   let px = 0, py = 0, pz = 0;
-  const dt = 0.25;
+  const dt = 0.05;
   const points = [];
   let apogeeTime = 0;
   let liftoffTime = null;
@@ -160,6 +170,8 @@ function generateTrajectory(site, windKey) {
   let recordEvery = Math.round(0.5 / dt);
   let stepCount = 0;
   let releasedFromPad = false;
+  let ascentPropRemaining = ASCENT_PROP_MASS;
+  let landingPropRemaining = LANDING_PROP_MASS;
   const railUnit = {
     x: Math.cos(LAUNCH_INCLINATION) * Math.cos(headingRad),
     y: Math.cos(LAUNCH_INCLINATION) * Math.sin(headingRad),
@@ -167,13 +179,14 @@ function generateTrajectory(site, windKey) {
   };
 
   for (let t = 0; t <= 1200; t += dt, stepCount++) {
-    const isPowered = t < BURN_TIME;
-    const mass = isPowered
-      ? WET_MASS - (PROP_MASS / BURN_TIME) * t
-      : DRY_MASS;
+    const isPowered = t < BURN_TIME && ascentPropRemaining > 0;
+    const mass = DRY_MASS + ascentPropRemaining + landingPropRemaining;
 
     const h = pz;
-    const landingBurnActive = !isPowered && h <= LANDING_BURN_START && vz < 0;
+    const landingBurnActive = !isPowered
+      && h <= LANDING_BURN_START
+      && vz < 0
+      && landingPropRemaining > 0;
     const rhoH   = rho(Math.max(0, h));
     const cs     = soundSpeed(Math.max(0, h));
     const [wu, wv] = windAtH(h);
@@ -193,7 +206,7 @@ function generateTrajectory(site, windKey) {
     const Fdy = relSpd > 0.01 ? -Fd * (relvy / relSpd) : 0;
     const Fdz = relSpd > 0.01 ? -Fd * (vz   / relSpd) : 0;
 
-    const cdS = landingBurnActive ? 18.0 : descentCdS(h, vz);
+    const cdS = descentCdS(h, vz);
     let FaugX = 0, FaugY = 0, FaugZ = 0;
     if (cdS > 0 && relSpd > 0.01) {
       const Faug = cdS * 0.5 * rhoH * relSpd * relSpd;
@@ -206,28 +219,60 @@ function generateTrajectory(site, windKey) {
 
     let Flx = 0, Fly = 0, Flz = 0;
     let landingThrottle = 0;
+    let landingDirX = 0, landingDirY = 0, landingDirZ = 1;
     if (landingBurnActive) {
-      const targetVz = -Math.max(3, Math.min(35, h / 55));
-      const desiredAx = -vx / LANDING_RESPONSE;
-      const desiredAy = -vy / LANDING_RESPONSE;
-      const desiredAz = (targetVz - vz) / LANDING_RESPONSE;
+      const hClamped = Math.max(0, h);
+      const sqrtTarget = Math.sqrt(2 * LANDING_DECEL_TARGET * hClamped);
+      const targetVz = -Math.min(LANDING_VZ_CAP, sqrtTarget);
+      let targetVzDot = 0;
+      if (sqrtTarget < LANDING_VZ_CAP && hClamped > 0.5 && targetVz < -0.1) {
+        targetVzDot = LANDING_DECEL_TARGET * vz / targetVz;
+      }
+      const timeToGround = hClamped / Math.max(20, -vz);
+      const horizontalResponse = Math.min(5, Math.max(2.5, timeToGround + 1));
+      const desiredAx = -vx / horizontalResponse;
+      const desiredAy = -vy / horizontalResponse;
+      const desiredAz = targetVzDot + (targetVz - vz) / LANDING_RESPONSE;
 
       let cmdX = mass * desiredAx - (Fdx + FaugX);
       let cmdY = mass * desiredAy - (Fdy + FaugY);
       let cmdZ = mass * desiredAz - (Fdz + FaugZ + Fgz);
 
-      const horizCmd = Math.sqrt(cmdX * cmdX + cmdY * cmdY);
-      const minVerticalCmd = horizCmd / Math.tan(LANDING_TILT_LIMIT);
-      cmdZ = Math.max(cmdZ, minVerticalCmd, 0);
+      cmdZ = Math.min(LANDING_THRUST_MAX, Math.max(0, cmdZ));
+      const requestedHoriz = Math.sqrt(cmdX * cmdX + cmdY * cmdY);
+      const tiltLimitedHoriz = cmdZ * Math.tan(LANDING_TILT_LIMIT);
+      const thrustLimitedHoriz = Math.sqrt(Math.max(0, LANDING_THRUST_MAX ** 2 - cmdZ ** 2));
+      const allowedHoriz = Math.min(requestedHoriz, tiltLimitedHoriz, thrustLimitedHoriz);
+      if (requestedHoriz > 0.01) {
+        const horizScale = allowedHoriz / requestedHoriz;
+        cmdX *= horizScale;
+        cmdY *= horizScale;
+      }
 
-      const cmdMag = Math.sqrt(cmdX * cmdX + cmdY * cmdY + cmdZ * cmdZ);
-      if (cmdMag > 0.01) {
-        const limitedMag = Math.min(cmdMag, LANDING_THRUST_MAX);
+      let cmdMag = Math.sqrt(cmdX * cmdX + cmdY * cmdY + cmdZ * cmdZ);
+      if (cmdMag > LANDING_THRUST_MIN) {
+        const limitedMag = Math.min(Math.max(cmdMag, LANDING_THRUST_MIN), LANDING_THRUST_MAX);
         const scale = limitedMag / cmdMag;
         Flx = cmdX * scale;
         Fly = cmdY * scale;
         Flz = cmdZ * scale;
         landingThrottle = limitedMag / LANDING_THRUST_MAX;
+      }
+
+      const Fl_mag = Math.sqrt(Flx * Flx + Fly * Fly + Flz * Flz);
+      if (Fl_mag > 0.01) {
+        landingDirX = Flx / Fl_mag;
+        landingDirY = Fly / Fl_mag;
+        landingDirZ = Flz / Fl_mag;
+      }
+      const propUsed = (Fl_mag * dt) / (LANDING_ISP * G0);
+      if (propUsed >= landingPropRemaining) {
+        const usable = landingPropRemaining / propUsed;
+        Flx *= usable;  Fly *= usable;  Flz *= usable;
+        landingThrottle *= usable;
+        landingPropRemaining = 0;
+      } else {
+        landingPropRemaining -= propUsed;
       }
     }
 
@@ -235,6 +280,10 @@ function generateTrajectory(site, windKey) {
     const Ftx = isPowered ? F_thrust * railUnit.x : 0;
     const Fty = isPowered ? F_thrust * railUnit.y : 0;
     const Ftz = isPowered ? F_thrust * railUnit.z : 0;
+    if (isPowered && F_thrust > 0) {
+      const ascentUsed = (F_thrust * dt) / (ASCENT_ISP * G0);
+      ascentPropRemaining = Math.max(0, ascentPropRemaining - ascentUsed);
+    }
 
     const ax = (Ftx + Flx + Fdx + FaugX) / mass;
     const ay = (Fty + Fly + Fdy + FaugY) / mass;
@@ -270,27 +319,35 @@ function generateTrajectory(site, windKey) {
         py = railUnit.y * nextRailProgress;
         pz = railUnit.z * nextRailProgress;
       } else {
+        const pz_prev = pz;
         vx += ax * dt;  vy += ay * dt;  vz += az * dt;
         px += vx * dt;  py += vy * dt;  pz += vz * dt;
+
+        if (pz < 0 && !isPowered) {
+          const f = pz_prev / (pz_prev - pz);
+          const t_touch = t + f * dt;
+          const px_t = px - (1 - f) * vx * dt;
+          const py_t = py - (1 - f) * vy * dt;
+          const vx_t = vx - (1 - f) * ax * dt;
+          const vy_t = vy - (1 - f) * ay * dt;
+          const vz_t = vz - (1 - f) * az * dt;
+          const landSpd = Math.sqrt(vx_t*vx_t + vy_t*vy_t + vz_t*vz_t);
+          points.push({
+            t: t_touch, x: px_t, y: py_t, z: 0,
+            speed: landSpd, mach: 0, phase: 'landing',
+            vx: vx_t, vy: vy_t, vz: vz_t,
+            landingBurn: landingBurnActive,
+            landingThrottle,
+            landingDirX, landingDirY, landingDirZ,
+          });
+          break;
+        }
       }
     }
 
-    if (pz < 0) {
-      if (isPowered) {
-        pz = 0;
-        if (vz < 0) vz = 0;
-      } else {
-        pz = 0;
-        const landSpd = Math.sqrt(vx*vx + vy*vy + vz*vz);
-        points.push({
-          t, x: px/1000, y: py/1000, z: 0,
-          speed: landSpd, mach: 0, phase: 'landing',
-          vx, vy, vz,
-          landingBurn: landingBurnActive,
-          landingThrottle,
-        });
-        break;
-      }
+    if (pz < 0 && isPowered) {
+      pz = 0;
+      if (vz < 0) vz = 0;
     }
 
     if (vz < 0 && apogeeTime === 0) apogeeTime = t;
@@ -306,11 +363,12 @@ function generateTrajectory(site, windKey) {
     if (stepCount % recordEvery === 0) {
       const inertialSpeed = Math.sqrt(vx*vx + vy*vy + vz*vz);
       points.push({
-        t, x: px/1000, y: py/1000, z: pz/1000,
+        t, x: px, y: py, z: pz,
         speed: inertialSpeed, mach, phase,
         vx, vy, vz,
         landingBurn: landingBurnActive,
         landingThrottle,
+        landingDirX, landingDirY, landingDirZ,
       });
     }
   }
@@ -326,12 +384,12 @@ function generateTrajectory(site, windKey) {
     burnoutTime: BURN_TIME,
     flightTime:  finalPt.t,
     metrics: {
-      apogee,
+      apogee:     apogee / 1000,
       maxMach,
       maxG,
       maxDynPressKPa,
-      drift:     Math.sqrt(finalPt.x ** 2 + finalPt.y ** 2),
-      landSpeed: finalPt.speed,
+      drift:      Math.sqrt(finalPt.x ** 2 + finalPt.y ** 2) / 1000,
+      landSpeed:  finalPt.speed,
       flightTime: finalPt.t,
     }
   };

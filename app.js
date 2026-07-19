@@ -1,5 +1,7 @@
 const THREE = window.THREE;
 
+const M_TO_SCENE = 1 / 100;
+
 const _rocketCorrQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
 const _rocketGroundOffset = 0.55 * 1.4;
 
@@ -8,6 +10,7 @@ const state = {
   activeWind: 'moderate',
   playing: false,
   frameIdx: 0,
+  playbackTime: 0,
   speed: 1,
   viewMode: 'follow',
   showTrajectories: false,
@@ -27,7 +30,7 @@ renderer.toneMappingExposure = 1.1;
 
 const scene = new THREE.Scene();
 
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 8000);
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 12000);
 camera.position.set(6, 3, 22);
 camera.lookAt(0, 8, 0);
 
@@ -486,13 +489,15 @@ function createTrajectoryTube(trajectory, color, opacity = 0.8) {
     landing: new THREE.Color(0x2ed573),
   };
 
+  const toScene = (p) => new THREE.Vector3(p.x * M_TO_SCENE, p.z * M_TO_SCENE, p.y * M_TO_SCENE);
+
   let currentPhase = pts[0].phase;
-  let segPoints = [new THREE.Vector3(pts[0].x, pts[0].z, pts[0].y)];
+  let segPoints = [toScene(pts[0])];
 
   const addSegment = (points, phase) => {
     if (points.length < 2) return;
     const curve = new THREE.CatmullRomCurve3(points);
-    const tubeGeom = new THREE.TubeGeometry(curve, points.length * 3, 0.04, 6, false);
+    const tubeGeom = new THREE.TubeGeometry(curve, points.length * 3, 0.6, 6, false);
     const col = phaseColors[phase] || new THREE.Color(color);
     const mat = new THREE.MeshBasicMaterial({
       color: col, transparent: true, opacity
@@ -500,7 +505,7 @@ function createTrajectoryTube(trajectory, color, opacity = 0.8) {
     const tube = new THREE.Mesh(tubeGeom, mat);
     group.add(tube);
 
-    const glowGeom = new THREE.TubeGeometry(curve, points.length * 2, 0.1, 6, false);
+    const glowGeom = new THREE.TubeGeometry(curve, points.length * 2, 1.4, 6, false);
     const glowMat = new THREE.MeshBasicMaterial({
       color: col, transparent: true, opacity: opacity * 0.15
     });
@@ -509,7 +514,7 @@ function createTrajectoryTube(trajectory, color, opacity = 0.8) {
 
   for (let i = 1; i < pts.length; i++) {
     const p = pts[i];
-    const vec = new THREE.Vector3(p.x, p.z, p.y);
+    const vec = toScene(p);
 
     if (p.phase !== currentPhase || i === pts.length - 1) {
       segPoints.push(vec);
@@ -522,30 +527,32 @@ function createTrajectoryTube(trajectory, color, opacity = 0.8) {
   }
 
   const lastPt = pts[pts.length - 1];
-  const markerGeom1 = new THREE.BoxGeometry(0.3, 0.03, 0.02);
-  const markerGeom2 = new THREE.BoxGeometry(0.3, 0.03, 0.02);
+  const lastScene = toScene(lastPt);
+  const markerGeom1 = new THREE.BoxGeometry(3.0, 0.3, 0.2);
+  const markerGeom2 = new THREE.BoxGeometry(3.0, 0.3, 0.2);
   const markerMat = new THREE.MeshBasicMaterial({ color });
   const m1 = new THREE.Mesh(markerGeom1, markerMat);
   const m2 = new THREE.Mesh(markerGeom2, markerMat);
   m1.rotation.y = Math.PI / 4;
   m2.rotation.y = -Math.PI / 4;
-  m1.position.set(lastPt.x, 0.05, lastPt.y);
-  m2.position.set(lastPt.x, 0.05, lastPt.y);
+  m1.position.set(lastScene.x, 0.5, lastScene.z);
+  m2.position.set(lastScene.x, 0.5, lastScene.z);
   group.add(m1, m2);
 
-  const ringGeom = new THREE.RingGeometry(0.3, 0.35, 24);
+  const ringGeom = new THREE.RingGeometry(3.0, 3.5, 24);
   const ringMat = new THREE.MeshBasicMaterial({
     color, transparent: true, opacity: 0.6, side: THREE.DoubleSide
   });
   const ring = new THREE.Mesh(ringGeom, ringMat);
   ring.rotation.x = -Math.PI / 2;
-  ring.position.set(lastPt.x, 0.06, lastPt.y);
+  ring.position.set(lastScene.x, 0.6, lastScene.z);
   group.add(ring);
 
-  const spikeGeom = new THREE.SphereGeometry(0.12, 12, 12);
+  const spikeGeom = new THREE.SphereGeometry(1.0, 12, 12);
   const spikeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   const spike = new THREE.Mesh(spikeGeom, spikeMat);
-  spike.position.set(pts[0].x, 0.1, pts[0].y);
+  const startScene = toScene(pts[0]);
+  spike.position.set(startScene.x, 1.0, startScene.z);
   group.add(spike);
 
   return group;
@@ -593,11 +600,11 @@ function buildScene() {
     }
 
     const pts2d = traj.points.filter((_, i) => i % 5 === 0).map(p =>
-      new THREE.Vector3(p.x, 0.02, p.y)
+      new THREE.Vector3(p.x * M_TO_SCENE, 0.2, p.y * M_TO_SCENE)
     );
     if (pts2d.length >= 2) {
       const curve = new THREE.CatmullRomCurve3(pts2d);
-      const geom = new THREE.TubeGeometry(curve, pts2d.length * 2, 0.02, 4, false);
+      const geom = new THREE.TubeGeometry(curve, pts2d.length * 2, 0.3, 4, false);
       const mat = new THREE.MeshBasicMaterial({
         color: site.colorHex, transparent: true, opacity: isActive ? 0.4 : 0.1
       });
@@ -613,6 +620,7 @@ function buildScene() {
   rocketObj = rocket;
   state.trajectory = TRAJECTORIES[state.activeSite][state.activeWind];
   state.frameIdx = 0;
+  state.playbackTime = 0;
   setTrajectoryVisibility(state.showTrajectories);
 }
 
@@ -624,15 +632,15 @@ function drawMiniChart(trajectory, currentIdx) {
   const W = miniCanvas.width, H = miniCanvas.height;
   miniCtx.clearRect(0, 0, W, H);
 
-  miniCtx.fillStyle = 'rgba(10,12,30,0.6)';
+  miniCtx.fillStyle = 'rgba(7, 12, 19, 0.72)';
   miniCtx.fillRect(0, 0, W, H);
 
   const maxAlt = Math.max(...pts.map(p => p.z));
   const maxT   = pts[pts.length - 1].t;
 
   const gradient = miniCtx.createLinearGradient(0, 0, 0, H);
-  gradient.addColorStop(0, 'rgba(0,212,255,0.8)');
-  gradient.addColorStop(1, 'rgba(123,47,247,0.2)');
+  gradient.addColorStop(0, 'rgba(77, 214, 255, 0.72)');
+  gradient.addColorStop(1, 'rgba(139, 156, 246, 0.12)');
 
   miniCtx.beginPath();
   pts.forEach((p, i) => {
@@ -641,7 +649,7 @@ function drawMiniChart(trajectory, currentIdx) {
     if (i === 0) miniCtx.moveTo(x, y);
     else miniCtx.lineTo(x, y);
   });
-  miniCtx.strokeStyle = 'rgba(0,212,255,0.8)';
+  miniCtx.strokeStyle = 'rgba(77, 214, 255, 0.9)';
   miniCtx.lineWidth = 1.5;
   miniCtx.stroke();
 
@@ -695,11 +703,11 @@ function updateTelemetry(pt) {
   if (!pt) return;
 
   const isEnd = state.frameIdx >= state.trajectory.points.length - 1;
-  const dispAlt = isEnd ? 0 : pt.z;
-  const dispSpd = isEnd ? 0 : pt.speed;
-  const dispMach = isEnd ? 0 : pt.mach;
+  const dispAltKm = isEnd ? 0 : pt.z / 1000;
+  const dispSpd   = isEnd ? 0 : pt.speed;
+  const dispMach  = isEnd ? 0 : pt.mach;
 
-  telAltVal.textContent  = dispAlt.toFixed(2) + ' km';
+  telAltVal.textContent  = dispAltKm.toFixed(2) + ' km';
   telSpdVal.textContent  = Math.round(dispSpd) + ' m/s';
   telMachVal.textContent = dispMach.toFixed(2);
   telTVal.textContent    = Math.round(pt.t) + 's';
@@ -709,7 +717,7 @@ function updateTelemetry(pt) {
   liveDot.style.background  = ph.color;
 
   updateAnnunciator(pt);
-  updateSkyColor(dispAlt);
+  updateSkyColor(dispAltKm);
 
   const pct = state.frameIdx / (state.trajectory.points.length - 1);
   document.getElementById('timelineProg').style.width = (pct * 100) + '%';
@@ -761,13 +769,20 @@ function updateRightPanel() {
   document.getElementById('mDrift').textContent  = m.drift.toFixed(2);
   document.getElementById('mLand').textContent   = m.landSpeed.toFixed(1);
 
+  const descent = traj.points.find(p => p.phase === 'descent');
+  const positionMarker = (id, time) => {
+    document.getElementById(id).style.left = `${(time / traj.flightTime) * 100}%`;
+  };
+  positionMarker('pmBurnout', traj.burnoutTime);
+  positionMarker('pmApogee', traj.apogeeTime);
+  positionMarker('pmEntry', descent ? descent.t : traj.apogeeTime);
 }
 
 const cameraTarget = new THREE.Vector3(0, 12, 0);
 const cameraOffset = {
   follow: new THREE.Vector3(6, 2, 12),
-  overview: new THREE.Vector3(30, 40, 30),
-  top: new THREE.Vector3(0, 45, 0.01),
+  overview: new THREE.Vector3(220, 260, 220),
+  top: new THREE.Vector3(0, 700, 0.01),
 };
 let camSmooth = new THREE.Vector3(8, 4, 30);
 let targetSmooth = new THREE.Vector3(0, 12, 0);
@@ -781,9 +796,9 @@ function updateCamera(rocketPos) {
     desiredTarget = rocketPos.clone();
   } else if (state.viewMode === 'overview') {
     desiredPos = cameraOffset.overview.clone();
-    desiredTarget = new THREE.Vector3(3, 0, 3);
+    desiredTarget = new THREE.Vector3(0, rocketPos.y * 0.5, 0);
   } else {
-    desiredPos = new THREE.Vector3(rocketPos.x, 50, rocketPos.z);
+    desiredPos = new THREE.Vector3(rocketPos.x, Math.max(60, rocketPos.y * 1.4 + 40), rocketPos.z);
     desiredTarget = new THREE.Vector3(rocketPos.x, 0, rocketPos.z);
   }
 
@@ -795,8 +810,8 @@ function updateCamera(rocketPos) {
 }
 
 let isDragging = false, prevMouse = { x: 0, y: 0 };
-let orbitTheta = 0.5, orbitPhi = 0.8, orbitRadius = 30;
-let orbitCenter = new THREE.Vector3(3, 4, 3);
+let orbitTheta = 0.5, orbitPhi = 0.8, orbitRadius = 320;
+let orbitCenter = new THREE.Vector3(0, 80, 0);
 
 canvas.addEventListener('mousedown', e => { isDragging = true; prevMouse = { x: e.clientX, y: e.clientY }; });
 canvas.addEventListener('mouseup', () => isDragging = false);
@@ -811,7 +826,7 @@ canvas.addEventListener('mousemove', e => {
 });
 canvas.addEventListener('wheel', e => {
   if (state.viewMode === 'follow') return;
-  orbitRadius = Math.max(5, Math.min(120, orbitRadius + e.deltaY * 0.05));
+  orbitRadius = Math.max(5, Math.min(2000, orbitRadius + e.deltaY * 0.5));
   updateOrbitCamera();
 }, { passive: true });
 
@@ -836,46 +851,69 @@ function animate() {
   if (!traj) { renderer.render(scene, camera); return; }
 
   if (state.playing) {
-    for (let s = 0; s < state.speed; s++) {
-      if (state.frameIdx < traj.points.length - 1) {
-        state.frameIdx++;
-      } else {
-        state.playing = false;
-        document.getElementById('btnPlay').textContent = '▶';
-        showToast('Mission complete. Booster landed.');
-        break;
-      }
+    state.playbackTime += delta * state.speed;
+    while (state.frameIdx < traj.points.length - 1
+        && traj.points[state.frameIdx + 1].t <= state.playbackTime) {
+      state.frameIdx++;
+    }
+    if (state.playbackTime >= traj.flightTime) {
+      state.playbackTime = traj.flightTime;
+      state.frameIdx = traj.points.length - 1;
+      state.playing = false;
+      document.getElementById('btnPlay').textContent = '▶';
+      showToast('Mission complete. Booster landed.');
     }
   }
 
-  const pt = traj.points[state.frameIdx];
-  if (!pt) { renderer.render(scene, camera); return; }
+  const currentPt = traj.points[state.frameIdx];
+  const nextPt = traj.points[Math.min(state.frameIdx + 1, traj.points.length - 1)];
+  const sampleSpan = nextPt.t - currentPt.t;
+  const sampleMix = sampleSpan > 0
+    ? THREE.MathUtils.clamp((state.playbackTime - currentPt.t) / sampleSpan, 0, 1)
+    : 0;
+  const pt = {
+    ...currentPt,
+    t: THREE.MathUtils.lerp(currentPt.t, nextPt.t, sampleMix),
+    x: THREE.MathUtils.lerp(currentPt.x, nextPt.x, sampleMix),
+    y: THREE.MathUtils.lerp(currentPt.y, nextPt.y, sampleMix),
+    z: THREE.MathUtils.lerp(currentPt.z, nextPt.z, sampleMix),
+    vx: THREE.MathUtils.lerp(currentPt.vx, nextPt.vx, sampleMix),
+    vy: THREE.MathUtils.lerp(currentPt.vy, nextPt.vy, sampleMix),
+    vz: THREE.MathUtils.lerp(currentPt.vz, nextPt.vz, sampleMix),
+    speed: THREE.MathUtils.lerp(currentPt.speed, nextPt.speed, sampleMix),
+    mach: THREE.MathUtils.lerp(currentPt.mach, nextPt.mach, sampleMix),
+    landingThrottle: THREE.MathUtils.lerp(currentPt.landingThrottle || 0, nextPt.landingThrottle || 0, sampleMix),
+    landingDirX: THREE.MathUtils.lerp(currentPt.landingDirX || 0, nextPt.landingDirX || 0, sampleMix),
+    landingDirY: THREE.MathUtils.lerp(currentPt.landingDirY || 0, nextPt.landingDirY || 0, sampleMix),
+    landingDirZ: THREE.MathUtils.lerp(currentPt.landingDirZ ?? 1, nextPt.landingDirZ ?? 1, sampleMix),
+  };
 
-  const rocketPos = new THREE.Vector3(pt.x, pt.z, pt.y);
+  const rocketPos = new THREE.Vector3(
+    pt.x * M_TO_SCENE,
+    Math.max(0, pt.z) * M_TO_SCENE + _rocketGroundOffset,
+    pt.y * M_TO_SCENE,
+  );
 
   if (rocketObj) {
     rocketObj.group.position.copy(rocketPos);
-    if (rocketObj.group.position.y < _rocketGroundOffset) {
-      rocketObj.group.position.y = _rocketGroundOffset;
-    }
     const velocity = new THREE.Vector3(pt.vx || 0, pt.vz || 0, pt.vy || 0);
     const velocityDir = velocity.clone();
     const velLen = velocityDir.length();
-    if (velLen > 10) {
-      velocityDir.divideScalar(velLen);
-      let orientDir = velocityDir.clone();
-      if (pt.phase !== 'powered') {
-        const clearlyDescending = pt.vz < -20 || pt.phase === 'entry' || pt.phase === 'descent' || pt.phase === 'landing';
-        if (clearlyDescending) orientDir.negate();
-      }
+    if (velLen > 0.01) velocityDir.divideScalar(velLen);
 
-      if (pt.phase === 'entry' || pt.phase === 'descent' || pt.phase === 'landing' || pt.landingBurn) {
-        const startAlt = 40.0;
-        const endAlt = 0.3;
-        const t = THREE.MathUtils.clamp((startAlt - pt.z) / (startAlt - endAlt), 0, 1);
-        const eased = t * t * (3 - 2 * t);
-        orientDir.lerp(new THREE.Vector3(0, 1, 0), eased);
-        orientDir.normalize();
+    const landingThrustDir = new THREE.Vector3(
+      pt.landingDirX || 0,
+      pt.landingDirZ ?? 1,
+      pt.landingDirY || 0,
+    ).normalize();
+
+    if (velLen > 10 || pt.landingBurn) {
+      let orientDir;
+      if (pt.landingBurn) {
+        orientDir = landingThrustDir;
+      } else {
+        orientDir = velocityDir.clone();
+        if (pt.phase !== 'powered' && pt.vz < -20) orientDir.negate();
       }
 
       const worldUp = Math.abs(orientDir.y) > 0.999
@@ -885,34 +923,31 @@ function animate() {
       const targetQuat = new THREE.Quaternion().setFromRotationMatrix(mat4);
       targetQuat.multiply(_rocketCorrQuat);
 
-      let slerpRate = 0.035;
-      if (pt.phase === 'powered')      slerpRate = 0.05;
-      rocketObj.group.quaternion.slerp(targetQuat, slerpRate);
+      const turnRate = pt.landingBurn ? 1.2 : pt.phase === 'powered' ? 4 : 2.2;
+      const turnBlend = 1 - Math.exp(-turnRate * Math.min(delta, 0.05));
+      rocketObj.group.quaternion.slerp(targetQuat, turnBlend);
     }
 
     const isPowered = pt.phase === 'powered';
     const isLanding = !!pt.landingBurn;
-    const isAttitudeBurn = !isPowered && !isLanding &&
-      (pt.phase === 'coast' || pt.phase === 'entry' || pt.phase === 'descent');
-    const isActive = isPowered || isLanding || isAttitudeBurn;
+    const isActive = isPowered || isLanding;
 
     let glowIntensity = 0;
     if (isPowered || isLanding) glowIntensity = 3 + Math.sin(animFrameCounter * 0.3) * 0.5;
-    else if (isAttitudeBurn)    glowIntensity = 2.0 + Math.sin(animFrameCounter * 0.4) * 0.4;
     rocketObj.engineLight.intensity = glowIntensity * 0.6;
-    if (isPowered)           { rocketObj.engineLight.color.set(0xff6030); rocketObj.plume.material.color.set(0xffb060); }
-    else if (isLanding)      { rocketObj.engineLight.color.set(0x30aaff); rocketObj.plume.material.color.set(0x88ccff); }
-    else                     { rocketObj.engineLight.color.set(0x88ddff); rocketObj.plume.material.color.set(0x88ddff); }
+    if (isPowered)      { rocketObj.engineLight.color.set(0xff6030); rocketObj.plume.material.color.set(0xffb060); }
+    else if (isLanding) { rocketObj.engineLight.color.set(0x30aaff); rocketObj.plume.material.color.set(0x88ccff); }
     rocketObj.plume.visible = isActive;
 
-    updateParticles(rocketPos, velocityDir, isActive, isLanding || isAttitudeBurn);
+    updateParticles(rocketPos, isLanding ? landingThrustDir : velocityDir, isActive, isLanding);
 
     const isDescent = pt.phase === 'entry' || pt.phase === 'descent' || pt.phase === 'landing' || pt.landingBurn;
+    const finBlend = 1 - Math.exp(-4 * Math.min(delta, 0.05));
     rocketObj.gridFins.forEach(gf => {
       const hinge = gf.userData.hinge;
       if (isDescent) {
         hinge.visible = true;
-        hinge.rotation.y += (0 - hinge.rotation.y) * 0.05;
+        hinge.rotation.y += (0 - hinge.rotation.y) * finBlend;
       } else {
         hinge.rotation.y = -Math.PI / 2;
         hinge.visible = false;
@@ -923,23 +958,23 @@ function animate() {
 
       const deployed = hinge.rotation.y > -0.3;
       const targetTilt = deployed ? -0.55 : 0;
-      gf.rotation.z += (targetTilt - gf.rotation.z) * 0.04;
-      gf.rotation.x = deployed ? Math.sin(animFrameCounter * 0.08) * 0.08 : 0;
+      gf.rotation.z += (targetTilt - gf.rotation.z) * finBlend;
+      gf.rotation.x += (0 - gf.rotation.x) * finBlend;
     });
-    
-    const isLandingPhase = pt.phase === 'landing' || pt.landingBurn;
+
+    const legT = THREE.MathUtils.clamp((450 - pt.z) / 370, 0, 1);
+    const legDeploy = legT * legT * (3 - 2 * legT);
+    const legBlend = 1 - Math.exp(-3 * Math.min(delta, 0.05));
     rocketObj.landingLegs.forEach(leg => {
-      const targetRot = isLandingPhase ? -2.15 : 0;
-      leg.rotation.z += (targetRot - leg.rotation.z) * 0.05;
+      const targetRot = -2.15 * legDeploy;
+      leg.rotation.z += (targetRot - leg.rotation.z) * legBlend;
     });
 
     if (rocketObj.plume.visible) {
-      const baseOpacity = isAttitudeBurn ? 0.55 : 0.4;
-      rocketObj.plume.material.opacity = baseOpacity + Math.sin(animFrameCounter * 0.5) * 0.15;
-      let plumeScale;
-      if (isPowered)           plumeScale = 1.0 + Math.random() * 0.15;
-      else if (isLanding)      plumeScale = 0.35 + (pt.landingThrottle || 0) * 0.45 + Math.random() * 0.08;
-      else                     plumeScale = 0.55 + Math.random() * 0.12;
+      rocketObj.plume.material.opacity = 0.4 + Math.sin(animFrameCounter * 0.5) * 0.15;
+      const plumeScale = isPowered
+        ? 1.0 + Math.random() * 0.15
+        : 0.35 + (pt.landingThrottle || 0) * 0.45 + Math.random() * 0.08;
       rocketObj.plume.scale.setScalar(plumeScale);
     }
   }
@@ -1022,7 +1057,7 @@ function setViewMode(mode) {
   const map = { follow: 'btnFollow', overview: 'btnOverview', top: 'btnTop' };
   document.getElementById(map[mode]).classList.add('active');
   if (mode !== 'follow') {
-    orbitCenter.set(3, 4, 3);
+    orbitCenter.set(0, 80, 0);
     updateOrbitCamera();
   }
 }
@@ -1034,13 +1069,14 @@ document.getElementById('btnTop').onclick      = () => setViewMode('top');
 function updateTrajectoryToggleLabel() {
   const btn = document.getElementById('btnToggleTraj');
   if (!btn) return;
-  btn.textContent = state.showTrajectories ? 'Trails On' : 'Trails Off';
+  btn.textContent = state.showTrajectories ? 'Hide trails' : 'Show trails';
   btn.classList.toggle('active', state.showTrajectories);
 }
 
 document.getElementById('btnPlay').onclick = () => {
   if (state.frameIdx >= state.trajectory.points.length - 1) {
     state.frameIdx = 0;
+    state.playbackTime = 0;
   }
   state.playing = !state.playing;
   document.getElementById('btnPlay').textContent = state.playing ? '⏸' : '▶';
@@ -1049,6 +1085,7 @@ document.getElementById('btnPlay').onclick = () => {
 
 document.getElementById('btnRewind').onclick = () => {
   state.frameIdx = 0;
+  state.playbackTime = 0;
   state.playing = false;
   document.getElementById('btnPlay').textContent = '▶';
 
@@ -1062,7 +1099,7 @@ document.getElementById('btnRewind').onclick = () => {
 };
 
 document.getElementById('btnFwd').onclick = () => {
-  state.speed = Math.min(state.speed * 2, 32);
+  state.speed = Math.min(state.speed * 2, 8);
   document.getElementById('speedVal').textContent = 'x' + state.speed;
   document.getElementById('speedSlider').value = state.speed;
 };
@@ -1075,6 +1112,7 @@ document.getElementById('speedSlider').oninput = function() {
 document.getElementById('scrubBar').oninput = function() {
   const pct = parseFloat(this.value) / 100;
   state.frameIdx = Math.floor(pct * (state.trajectory.points.length - 1));
+  state.playbackTime = state.trajectory.points[state.frameIdx].t;
   state.playing = false;
   document.getElementById('btnPlay').textContent = '▶';
 };
@@ -1097,7 +1135,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-function simulateLoading() {
+function simulateLoading(onComplete) {
   const fill = document.getElementById('loaderFill');
   const pct  = document.getElementById('loaderPct');
   let progress = 0;
@@ -1109,7 +1147,10 @@ function simulateLoading() {
     if (i >= steps.length) {
       setTimeout(() => {
         document.getElementById('loader').classList.add('fade-out');
-        setTimeout(() => document.getElementById('loader').remove(), 700);
+        setTimeout(() => {
+          document.getElementById('loader').remove();
+          onComplete();
+        }, 700);
       }, 200);
       return;
     }
@@ -1128,7 +1169,14 @@ function simulateLoading() {
 }
 
 function init() {
-  simulateLoading();
+  simulateLoading(() => {
+    showToast('System ready');
+    setTimeout(() => {
+      state.playing = true;
+      document.getElementById('btnPlay').textContent = '⏸';
+      showToast('Ignition sequence start');
+    }, 1000);
+  });
   buildSitePanel();
   buildScene();
   updateRightPanel();
@@ -1140,15 +1188,6 @@ function init() {
   updateTrajectoryToggleLabel();
   document.getElementById('speedSlider').value = state.speed;
   document.getElementById('speedVal').textContent = 'x' + state.speed;
-
-  setTimeout(() => {
-    showToast('System ready');
-    setTimeout(() => {
-      state.playing = true;
-      document.getElementById('btnPlay').textContent = '⏸';
-      showToast('Ignition sequence start');
-    }, 1000);
-  }, 1000);
 
   animate();
 }

@@ -7,7 +7,7 @@
   <meta name="description" content="Interactive 3D simulation of a reusable booster launching and landing from UK spaceports." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
   <div id="loader">
@@ -85,13 +85,14 @@
   <canvas id="canvas3d"></canvas>
 
   <aside id="sitePanel">
-    <div class="panel-title">LAUNCH SITES</div>
+    <div class="panel-title">MISSION SETUP</div>
+    <div class="panel-label">Launch site</div>
     <div id="siteList"></div>
     <div class="panel-divider"></div>
-    <div class="panel-title">WIND CONDITION</div>
+    <div class="panel-label">Wind condition</div>
     <div id="windList"></div>
     <div class="panel-divider"></div>
-    <div class="panel-title">VIEW MODE</div>
+    <div class="panel-label">Camera</div>
     <div id="viewBtns">
       <button class="view-btn active" id="btnFollow">Follow Rocket</button>
       <button class="view-btn" id="btnOverview">Overview</button>
@@ -100,64 +101,68 @@
   </aside>
 
   <aside id="telPanel">
-    <div class="panel-title">FLIGHT DATA</div>
+    <div class="panel-title">MISSION SUMMARY</div>
 
-    <div class="metric-card" id="cardApogee">
-      <div class="metric-header">
-        <span class="metric-icon">🚀</span>
-        <span class="metric-name">APOGEE</span>
+    <div class="metrics-grid">
+      <div class="metric-card" id="cardApogee">
+        <div class="metric-header">
+          <span class="metric-icon">AP</span>
+          <span class="metric-name">APOGEE</span>
+        </div>
+        <div class="metric-value" id="mApogee">—</div>
+        <div class="metric-unit">km AGL</div>
       </div>
-      <div class="metric-value" id="mApogee">—</div>
-      <div class="metric-unit">kilometres AGL</div>
-    </div>
 
-    <div class="metric-card" id="cardMach">
-      <div class="metric-header">
-        <span class="metric-icon">⚡</span>
-        <span class="metric-name">MAX MACH</span>
+      <div class="metric-card" id="cardMach">
+        <div class="metric-header">
+          <span class="metric-icon">MX</span>
+          <span class="metric-name">MAX MACH</span>
+        </div>
+        <div class="metric-value" id="mMach">—</div>
+        <div class="metric-unit">Mach</div>
       </div>
-      <div class="metric-value" id="mMach">—</div>
-      <div class="metric-unit">Mach number</div>
-    </div>
 
-    <div class="metric-card" id="cardDrift">
-      <div class="metric-header">
-        <span class="metric-icon">🎯</span>
-        <span class="metric-name">DRIFT</span>
+      <div class="metric-card" id="cardDrift">
+        <div class="metric-header">
+          <span class="metric-icon">DR</span>
+          <span class="metric-name">DRIFT</span>
+        </div>
+        <div class="metric-value" id="mDrift">—</div>
+        <div class="metric-unit">km lateral</div>
       </div>
-      <div class="metric-value" id="mDrift">—</div>
-      <div class="metric-unit">km lateral drift</div>
-    </div>
 
-    <div class="metric-card" id="cardLand">
-      <div class="metric-header">
-        <span class="metric-icon">🛬</span>
-        <span class="metric-name">LAND SPEED</span>
+      <div class="metric-card" id="cardLand">
+        <div class="metric-header">
+          <span class="metric-icon">TD</span>
+          <span class="metric-name">TOUCHDOWN</span>
+        </div>
+        <div class="metric-value" id="mLand">—</div>
+        <div class="metric-unit">m/s</div>
       </div>
-      <div class="metric-value" id="mLand">—</div>
-      <div class="metric-unit">m/s touchdown</div>
     </div>
 
     <div class="panel-divider"></div>
-    <div class="panel-title">ALTITUDE PROFILE</div>
-    <canvas id="miniChart" width="220" height="90"></canvas>
+    <div class="panel-label">Flight profile</div>
+    <div class="chart-shell">
+      <canvas id="miniChart" width="220" height="90"></canvas>
+    </div>
 
     <div class="panel-divider"></div>
-    <div class="panel-title">PLAYBACK</div>
-    <div class="playback-row">
-      <button class="pb-btn" id="btnRewind" title="Restart">⏮</button>
-      <button class="pb-btn primary" id="btnPlay" title="Play/Pause">▶</button>
-      <button class="pb-btn" id="btnFwd" title="Fast-Forward">⏩</button>
+    <div class="panel-label">Playback</div>
+    <div class="playback-card">
+      <div class="playback-row">
+        <button class="pb-btn" id="btnRewind" title="Restart">⏮</button>
+        <button class="pb-btn primary" id="btnPlay" title="Play/Pause">▶</button>
+        <button class="pb-btn" id="btnFwd" title="Fast-Forward">⏩</button>
+        <button class="trail-btn" id="btnToggleTraj" title="Toggle trajectories">Show trails</button>
+      </div>
+      <div class="speed-row">
+        <span class="spd-lbl">Speed</span>
+        <input type="range" id="speedSlider" min="0.5" max="8" step="0.5" value="1" />
+        <span class="spd-val" id="speedVal">×1</span>
+      </div>
+      <input type="range" id="scrubBar" min="0" max="100" value="0" class="scrub-bar" />
     </div>
-    <div class="playback-row">
-      <button class="pb-btn" id="btnToggleTraj" title="Toggle trajectories">Trails Off</button>
-    </div>
-    <div class="speed-row">
-      <span class="spd-lbl">Speed</span>
-      <input type="range" id="speedSlider" min="0.5" max="8" step="0.5" value="1" />
-      <span class="spd-val" id="speedVal">×2</span>
-    </div>
-    <input type="range" id="scrubBar" min="0" max="100" value="0" class="scrub-bar" />
 
   </aside>
 
@@ -176,7 +181,7 @@
     </div>
     <div class="phase-marker" id="pmEntry">
       <div class="phase-line"></div>
-      <div class="phase-label">ENTRY</div>
+      <div class="phase-label">DESCENT</div>
     </div>
     <div class="phase-marker" style="right:0;left:auto">
       <div class="phase-line"></div>
@@ -187,8 +192,8 @@
 
   <div id="toastContainer"></div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="data.js"></script>
-  <script src="app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="data.js?v=5"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>
