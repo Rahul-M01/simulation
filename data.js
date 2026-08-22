@@ -450,8 +450,7 @@ function generateTrajectory(site, windKey) {
       if (landingIgnited && landingProp > 0) {
         phase = 'landing-burn';
         const h = Math.max(0, s.z);
-        // Plan on thrust minus gravity only: never budget on drag that
-        // vanishes as the burn kills airspeed. Vertical component only.
+        // Thrust-minus-gravity planning, vertical component only.
         if (true) {
           let azCmd;
           if (h < LAND_WINDOW_H) {
@@ -490,8 +489,7 @@ function generateTrajectory(site, windKey) {
             Tx *= sc; Ty *= sc;
           }
 
-          // Budget: over-limit steals from lateral only. The vertical
-          // brake is never starved by the wind fight.
+          // Over budget: shed lateral first, keep the vertical brake.
           const latBudgetSq = LANDING_THRUST_MAX * LANDING_THRUST_MAX - Tz * Tz;
           if (latBudgetSq < 0) {
             Tz = LANDING_THRUST_MAX;
