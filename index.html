@@ -5,20 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>UK Reusable Booster | 3D Mission Simulation</title>
   <meta name="description" content="Interactive 3D simulation of a reusable booster launching and landing from UK spaceports." />
-  <link rel="stylesheet" href="style.css?v=6" />
+  <link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
   <div id="loader">
     <div class="loader-inner">
-      <div class="loader-logo">
-        <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
-          <path d="M30 5 L30 55" stroke="#00d4ff" stroke-width="2.5" stroke-linecap="round"/>
-          <path d="M30 5 L22 18 L38 18 Z" fill="#00d4ff"/>
-          <path d="M22 42 L30 55 L38 42" stroke="#00d4ff" stroke-width="2" fill="none" stroke-linecap="round"/>
-        </svg>
-      </div>
-      <div class="loader-title">UK BOOSTER MISSION</div>
-      <div class="loader-sub">Initializing telemetry</div>
+      <div class="loader-mark"></div>
+      <div class="loader-title">UK REUSABLE BOOSTER</div>
+      <div class="loader-sub">Flight simulation</div>
       <div class="loader-bar"><div class="loader-fill" id="loaderFill"></div></div>
       <div class="loader-pct" id="loaderPct">0%</div>
     </div>
@@ -29,15 +23,10 @@
       <button id="panelToggle" class="panel-toggle" title="Mission setup" aria-label="Toggle mission setup panel">
         <span></span><span></span><span></span>
       </button>
-      <div class="header-logo">
-        <svg width="32" height="32" viewBox="0 0 60 60" fill="none">
-          <path d="M30 5 L30 55" stroke="#00d4ff" stroke-width="3" stroke-linecap="round"/>
-          <path d="M30 5 L21 20 L39 20 Z" fill="#00d4ff"/>
-        </svg>
-      </div>
+      <span class="brand-mark"></span>
       <div>
         <div class="header-title">UK Reusable Booster</div>
-        <div class="header-sub">3D Mission Simulation</div>
+        <div class="header-sub">Flight Simulation</div>
       </div>
     </div>
     <div class="header-center">
@@ -48,20 +37,20 @@
     </div>
     <div class="header-right">
       <div class="telemetry-pill">
-        <span class="tel-label">ALT</span>
-        <span class="tel-val" id="telAltVal">0 km</span>
+        <span class="tel-label">Alt</span>
+        <span class="tel-val mono-num" id="telAltVal">0 km</span>
       </div>
       <div class="telemetry-pill">
-        <span class="tel-label">SPD</span>
-        <span class="tel-val" id="telSpdVal">0 m/s</span>
+        <span class="tel-label">Spd</span>
+        <span class="tel-val mono-num" id="telSpdVal">0 m/s</span>
       </div>
       <div class="telemetry-pill">
-        <span class="tel-label">MACH</span>
-        <span class="tel-val" id="telMachVal">0.00</span>
+        <span class="tel-label">Mach</span>
+        <span class="tel-val mono-num" id="telMachVal">0.00</span>
       </div>
       <div class="telemetry-pill">
         <span class="tel-label">T+</span>
-        <span class="tel-val" id="telTVal">0s</span>
+        <span class="tel-val mono-num" id="telTVal">0s</span>
       </div>
     </div>
   </header>
@@ -73,7 +62,7 @@
   <canvas id="canvas3d"></canvas>
 
   <aside id="sitePanel">
-    <div class="panel-title">MISSION SETUP</div>
+    <div class="panel-title">Mission Setup</div>
     <div class="panel-label">Launch site</div>
     <div id="siteList"></div>
     <div class="panel-divider"></div>
@@ -89,7 +78,7 @@
   </aside>
 
   <aside id="telPanel">
-    <div class="panel-title">TELEMETRY</div>
+    <div class="panel-title">Telemetry</div>
 
     <div class="panel-label">Live</div>
     <div class="live-grid">
@@ -98,7 +87,7 @@
           <div class="throttle-fill" id="thrFill"></div>
         </div>
         <div class="throttle-caption">
-          <span class="mini-label">THR</span>
+          <span class="mini-label">Thr</span>
           <span class="mono-num" id="thrVal">0%</span>
         </div>
       </div>
@@ -109,7 +98,7 @@
           <div class="prop-seg landing" id="propLanding"></div>
         </div>
         <div class="prop-caption">
-          <span class="mini-label">PROP</span>
+          <span class="mini-label">Prop</span>
           <span class="legend"><i class="dot asc-dot"></i>ASC <i class="dot lnd-dot"></i>LND <span class="mono-num" id="propVal">100%</span></span>
         </div>
         <div class="pitch-row">
@@ -118,13 +107,13 @@
             <div class="attitude-center"></div>
           </div>
           <div class="pitch-caption">
-            <span class="mini-label">PITCH</span>
-            <span class="mono-num" id="pitchVal">0°</span>
+            <span class="mini-label">Pitch</span>
+            <span class="mono-num" id="pitchVal">0&deg;</span>
           </div>
         </div>
         <div class="fin-row">
-          <span class="mini-label">GRID FINS</span>
-          <span class="fin-chip stowed" id="finChip">STOWED</span>
+          <span class="mini-label">Grid fins</span>
+          <span class="fin-chip stowed mono-num" id="finChip">STOWED</span>
         </div>
       </div>
     </div>
@@ -134,22 +123,22 @@
     <div class="metrics-grid">
       <div class="metric-card">
         <span class="metric-tag">AP</span>
-        <span class="metric-value mono-num" id="mApogee">—</span>
+        <span class="metric-value mono-num" id="mApogee">&mdash;</span>
         <span class="metric-unit">km apogee</span>
       </div>
       <div class="metric-card">
         <span class="metric-tag">MX</span>
-        <span class="metric-value mono-num" id="mMach">—</span>
+        <span class="metric-value mono-num" id="mMach">&mdash;</span>
         <span class="metric-unit">max mach</span>
       </div>
       <div class="metric-card">
         <span class="metric-tag">Q</span>
-        <span class="metric-value mono-num" id="mMaxQ">—</span>
+        <span class="metric-value mono-num" id="mMaxQ">&mdash;</span>
         <span class="metric-unit">kPa max q</span>
       </div>
       <div class="metric-card">
         <span class="metric-tag">TD</span>
-        <span class="metric-value mono-num" id="mLand">—</span>
+        <span class="metric-value mono-num" id="mLand">&mdash;</span>
         <span class="metric-unit">m/s touchdown</span>
       </div>
     </div>
@@ -157,23 +146,29 @@
     <div class="panel-divider"></div>
     <div class="panel-label">Flight profile</div>
     <div class="chart-shell">
-      <canvas id="miniChart" width="236" height="120"></canvas>
+      <canvas id="miniChart" width="236" height="118"></canvas>
     </div>
-    <div class="chart-footnote"><span class="lg-alt">ALT</span><span class="lg-spd">SPD</span><span class="foot-right" id="chartDrift">DRIFT — km</span></div>
+    <div class="chart-footnote"><span class="lg-alt">ALT</span><span class="lg-spd">SPD</span><span class="foot-right" id="chartDrift">DRIFT &mdash; km</span></div>
 
     <div class="panel-divider"></div>
-    <div class="panel-label">Playback</div>
     <div class="playback-card">
       <div class="playback-row">
-        <button class="pb-btn" id="btnRewind" title="Restart">⏮</button>
-        <button class="pb-btn primary" id="btnPlay" title="Play/Pause">▶</button>
-        <button class="pb-btn" id="btnFwd" title="Fast-Forward">⏩</button>
+        <button class="pb-btn" id="btnRewind" title="Restart">
+          <svg viewBox="0 0 14 14"><path d="M3 2h1.5v10H3z"/><path d="M11.6 2.4v9.2L5.2 7z"/></svg>
+        </button>
+        <button class="pb-btn primary" id="btnPlay" title="Play/Pause">
+          <svg class="ic-play" viewBox="0 0 14 14"><path d="M4.4 2.3 12 7l-7.6 4.7z"/></svg>
+          <svg class="ic-pause" viewBox="0 0 14 14"><path d="M3.6 2h2.5v10H3.6z"/><path d="M7.9 2h2.5v10H7.9z"/></svg>
+        </button>
+        <button class="pb-btn" id="btnFwd" title="Fast-forward">
+          <svg viewBox="0 0 14 14"><path d="M9.5 2H11v10H9.5z"/><path d="M2.4 2.4v9.2L8.8 7z"/></svg>
+        </button>
         <button class="trail-btn" id="btnToggleTraj" title="Toggle trajectories">Trails off</button>
       </div>
       <div class="speed-row">
         <span class="spd-lbl">Speed</span>
         <input type="range" id="speedSlider" min="0.5" max="8" step="0.5" value="1" />
-        <span class="spd-val mono-num" id="speedVal">×1</span>
+        <span class="spd-val mono-num" id="speedVal">&times;1</span>
       </div>
       <input type="range" id="scrubBar" min="0" max="100" value="0" class="scrub-bar" />
     </div>
@@ -188,7 +183,7 @@
   <div id="toastContainer"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="data.js?v=6"></script>
-  <script src="app.js?v=6"></script>
+  <script src="data.js?v=7"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

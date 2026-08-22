@@ -653,7 +653,7 @@ miniCanvas.addEventListener('click', e => {
   const frac = THREE.MathUtils.clamp((e.clientX - rect.left) / rect.width, 0, 1);
   seekToTime(frac * traj.flightTime);
   state.playing = false;
-  document.getElementById('btnPlay').textContent = '▶';
+  document.getElementById('btnPlay').classList.toggle('playing', state.playing);
 });
 
 function drawMiniChart(trajectory, currentIdx) {
@@ -984,7 +984,7 @@ function animate() {
       state.playbackTime = traj.flightTime;
       state.frameIdx = traj.points.length - 1;
       state.playing = false;
-      document.getElementById('btnPlay').textContent = '▶';
+      document.getElementById('btnPlay').classList.toggle('playing', state.playing);
       showToast('Mission complete. Booster landed.');
     }
   }
@@ -1150,7 +1150,7 @@ window.selectSite = function(key) {
   state.activeSite = key;
   state.frameIdx = 0;
   state.playing = false;
-  document.getElementById('btnPlay').textContent = '▶';
+  document.getElementById('btnPlay').classList.toggle('playing', state.playing);
   buildScene();
   updateRightPanel();
   buildSitePanel();
@@ -1205,7 +1205,7 @@ document.getElementById('btnPlay').onclick = () => {
     state.playbackTime = 0;
   }
   state.playing = !state.playing;
-  document.getElementById('btnPlay').textContent = state.playing ? '⏸' : '▶';
+  document.getElementById('btnPlay').classList.toggle('playing', state.playing);
   if (state.playing) showToast('Simulation running');
 };
 
@@ -1213,7 +1213,7 @@ document.getElementById('btnRewind').onclick = () => {
   state.frameIdx = 0;
   state.playbackTime = 0;
   state.playing = false;
-  document.getElementById('btnPlay').textContent = '▶';
+  document.getElementById('btnPlay').classList.toggle('playing', state.playing);
 
   lastStatus = "";
   annunciatorStates.entry = false;
@@ -1241,7 +1241,7 @@ document.getElementById('scrubBar').oninput = function() {
   state.frameIdx = Math.floor(pct * (state.trajectory.points.length - 1));
   state.playbackTime = state.trajectory.points[state.frameIdx].t;
   state.playing = false;
-  document.getElementById('btnPlay').textContent = '▶';
+  document.getElementById('btnPlay').classList.toggle('playing', state.playing);
 };
 
 function showToast(msg, duration = 2800) {
@@ -1300,7 +1300,7 @@ function init() {
     showToast('System ready');
     setTimeout(() => {
       state.playing = true;
-      document.getElementById('btnPlay').textContent = '⏸';
+      document.getElementById('btnPlay').classList.toggle('playing', state.playing);
       showToast('Ignition sequence start');
     }, 1000);
   });
