@@ -70,7 +70,7 @@ function generateTrajectory(site, windKey) {
     [1.2, 0.78], [1.6, 0.66], [3.0, 0.55], [6.0, 0.48]
   ];
 
-  const DRAG_REF_AREA = 0.30;
+  const DRAG_REF_AREA = Math.PI * 0.6 * 0.6; // true frontal area of the 1.2 m body
 
   const FIN_CDS_MAX     = 1.15;
   const FIN_DEPLOY_ALT  = 30000;
@@ -78,20 +78,16 @@ function generateTrajectory(site, windKey) {
 
   const PITCH_KICK_SPEED = 35;
   const PITCH_START_ELEV = 90;
-  const PITCH_END_ELEV   = 42;
+  const PITCH_END_ELEV   = 68;
   const PITCH_EASE_SHAPE = 4.4;
 
-  const IGNITION_SAFETY     = 1.12;
-  const HOVERSLAM_KP        = 0.5;
-  const HOVERSLAM_FF        = 0.95;
-  const HOVERSLAM_PLAN_K    = 1.25;
-  const HOVERSLAM_LAT_KP    = 0.55;
-  const SETTLE_KP           = 0.9;
+  const IGNITION_SAFETY     = 1.40;
+  const HOVERSLAM_LAT_KP    = 0.90;
+  const SETTLE_KP           = 3.0;
   const LAND_TILT_LIMIT     = 22 * Math.PI / 180;
   const LAND_VZ_MIN         = 2;
   const LAND_VZ_MAX         = 55;
-  const LAND_WINDOW_H       = 25;
-  const LAND_CUTOFF_MARGIN  = 1.5;
+  const LAND_WINDOW_H       = 60;
 
   const BB_FLIP_DELAY   = 1.5;
   const BB_SPOOL_TIME   = 0.6;
@@ -438,10 +434,10 @@ function generateTrajectory(site, windKey) {
             finStartT = t;
             finDeployTime = t;
           }
-          const dragAssist = Math.max(0, aero.daz);
-          const aEff = (THRUST_MAX / s.m) * Math.cos(LAND_TILT_LIMIT) - G0 + dragAssist;
-          const spd = aero.spd;
-          if (aEff > 1 && s.z <= IGNITION_SAFETY * spd * spd / (2 * aEff)) {
+          // Gate on drag-free capability: drag collapses as the burn
+          // kills airspeed, so budgeting on it lands you short of sky.
+          const aCap = (THRUST_MAX / s.m) * Math.cos(LAND_TILT_LIMIT) - G0;
+          if (aCap > 1 && s.z <= IGNITION_SAFETY * s.vz * s.vz / (2 * aCap)) {
             landingIgnited = true;
             landingIgnitionTime = t;
           }
@@ -450,20 +446,24 @@ function generateTrajectory(site, windKey) {
 
       if (landingIgnited && landingProp > 0) {
         phase = 'landing-burn';
-        const spd = aero.spd;
         const h = Math.max(0, s.z);
-        const dragAssist = Math.max(0, aero.daz);
-        const aEff = (THRUST_MAX / s.m) * Math.cos(LAND_TILT_LIMIT) - G0 + dragAssist;
-        const root = Math.sqrt(Math.max(0, spd * spd - 2 * HOVERSLAM_PLAN_K * aEff * h));
-        const vzTarget = -clamp(root, LAND_VZ_MIN, LAND_VZ_MAX);
-
-        const aheadOfProfile = h >= LAND_WINDOW_H && s.vz >= vzTarget + LAND_CUTOFF_MARGIN;
-        if (!aheadOfProfile) {
+        // Plan on thrust minus gravity only: never budget on drag that
+        // vanishes as the burn kills airspeed. Vertical component only.
+        if (true) {
           let azCmd;
           if (h < LAND_WINDOW_H) {
-            azCmd = G0 + SETTLE_KP * (vzTarget - s.vz) - aero.daz;
+            // Terminal brake onto a fixed touchdown speed: PD with
+            // authority to saturate the engine.
+            const vzSettle = -LAND_VZ_MIN;
+            azCmd = G0 + SETTLE_KP * (vzSettle - s.vz) - aero.daz;
+            azCmd = Math.min(Math.max(azCmd, 0), THRUST_MAX / s.m);
           } else {
-            azCmd = HOVERSLAM_FF * aEff + G0 + HOVERSLAM_KP * (vzTarget - s.vz) - aero.daz;
+            // Kinematic steering: shed (v^2 - vf^2) / (2(h-hf)) so the
+            // vertical speed meets vf right at the settle window edge.
+            const hf = Math.min(LAND_WINDOW_H, Math.max(8, h * 0.2));
+            const areq = (s.vz * s.vz - LAND_VZ_MIN * LAND_VZ_MIN) /
+              (2 * Math.max(hf, h - hf));
+            azCmd = G0 + clamp(areq, 0, THRUST_MAX / s.m) - aero.daz;
           }
           const axCmd = -HOVERSLAM_LAT_KP * s.vx - aero.dax;
           const ayCmd = -HOVERSLAM_LAT_KP * s.vy - aero.day;

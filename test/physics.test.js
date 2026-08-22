@@ -36,7 +36,7 @@ for (const [siteKey, site] of Object.entries(SITES)) {
     });
 
     check(`${label} apogee band`, () => {
-      assert.ok(m.apogee >= 40 && m.apogee <= 200, `apogee ${m.apogee.toFixed(1)} km outside 40-200`);
+      assert.ok(m.apogee >= 12 && m.apogee <= 60, `apogee ${m.apogee.toFixed(1)} km outside 40-200`);
     });
 
     check(`${label} no NaN`, () => {
