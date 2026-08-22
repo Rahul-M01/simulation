@@ -482,11 +482,12 @@ function createTrajectoryTube(trajectory, color, opacity = 0.8) {
   const group = new THREE.Group();
 
   const phaseColors = {
-    powered: new THREE.Color(0xff6030),
-    coast:   new THREE.Color(0x00d4ff),
-    entry:   new THREE.Color(0xffaa00),
-    descent: new THREE.Color(0x7b2ff7),
-    landing: new THREE.Color(0x2ed573),
+    powered:       new THREE.Color(0xff6030),
+    'ascent-coast': new THREE.Color(0x00d4ff),
+    entry:         new THREE.Color(0xffaa00),
+    descent:       new THREE.Color(0xb48cff),
+    'landing-burn': new THREE.Color(0x2ed573),
+    touchdown:     new THREE.Color(0x2ed573),
   };
 
   const toScene = (p) => new THREE.Vector3(p.x * M_TO_SCENE, p.z * M_TO_SCENE, p.y * M_TO_SCENE);
@@ -627,61 +628,123 @@ function buildScene() {
 const miniCanvas = document.getElementById('miniChart');
 const miniCtx = miniCanvas.getContext('2d');
 
+const PHASE_BANDS = {
+  powered:        'rgba(255, 96, 48, 0.07)',
+  'ascent-coast': 'rgba(0, 214, 255, 0.05)',
+  entry:          'rgba(255, 170, 0, 0.06)',
+  descent:        'rgba(180, 140, 255, 0.06)',
+  'landing-burn': 'rgba(46, 213, 115, 0.08)',
+};
+
+function seekToTime(time) {
+  const traj = state.trajectory;
+  if (!traj) return;
+  const t = THREE.MathUtils.clamp(time, 0, traj.flightTime);
+  let idx = 0;
+  while (idx < traj.points.length - 1 && traj.points[idx + 1].t <= t) idx++;
+  state.frameIdx = idx;
+  state.playbackTime = t;
+}
+
+miniCanvas.addEventListener('click', e => {
+  const traj = state.trajectory;
+  if (!traj || !traj.flightTime) return;
+  const rect = miniCanvas.getBoundingClientRect();
+  const frac = THREE.MathUtils.clamp((e.clientX - rect.left) / rect.width, 0, 1);
+  seekToTime(frac * traj.flightTime);
+  state.playing = false;
+  document.getElementById('btnPlay').textContent = '▶';
+});
+
 function drawMiniChart(trajectory, currentIdx) {
   const pts = trajectory.points;
+  if (!pts.length) return;
   const W = miniCanvas.width, H = miniCanvas.height;
+  const padB = 10, padT = 8;
   miniCtx.clearRect(0, 0, W, H);
 
-  miniCtx.fillStyle = 'rgba(7, 12, 19, 0.72)';
-  miniCtx.fillRect(0, 0, W, H);
+  const maxT   = Math.max(1, pts[pts.length - 1].t);
+  const maxAlt = Math.max(1000, ...pts.map(p => p.z));
+  const maxSpd = Math.max(10, ...pts.map(p => p.speed));
+  const X = t => (t / maxT) * W;
+  const Yalt = z => H - padB - (z / maxAlt) * (H - padT - padB);
+  const Yspd = v => H - padB - (v / maxSpd) * (H - padT - padB);
 
-  const maxAlt = Math.max(...pts.map(p => p.z));
-  const maxT   = pts[pts.length - 1].t;
+  let bandStart = 0;
+  const bandsEnd = [];
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i].phase !== pts[i - 1].phase || i === pts.length - 1) {
+      const col = PHASE_BANDS[pts[i - 1].phase];
+      if (col) {
+        miniCtx.fillStyle = col;
+        miniCtx.fillRect(X(bandStart), 0, X(pts[i].t) - X(bandStart), H);
+      }
+      bandStart = pts[i].t;
+    }
+  }
 
-  const gradient = miniCtx.createLinearGradient(0, 0, 0, H);
-  gradient.addColorStop(0, 'rgba(77, 214, 255, 0.72)');
-  gradient.addColorStop(1, 'rgba(139, 156, 246, 0.12)');
+  if (trajectory.events) {
+    for (const ev of trajectory.events) {
+      const x = X(ev.t);
+      miniCtx.strokeStyle = 'rgba(255,255,255,0.14)';
+      miniCtx.beginPath();
+      miniCtx.moveTo(x, 2);
+      miniCtx.lineTo(x, H - padB);
+      miniCtx.stroke();
+      miniCtx.fillStyle = 'rgba(255,255,255,0.4)';
+      miniCtx.fillRect(x - 1.5, 0, 3, 3);
+    }
+  }
 
+  miniCtx.strokeStyle = 'rgba(232,236,244,0.32)';
+  miniCtx.lineWidth = 1;
   miniCtx.beginPath();
   pts.forEach((p, i) => {
-    const x = (p.t / maxT) * W;
-    const y = H - (p.z / maxAlt) * (H - 8) - 4;
-    if (i === 0) miniCtx.moveTo(x, y);
-    else miniCtx.lineTo(x, y);
+    const x = X(p.t), y = Yspd(p.speed);
+    if (i === 0) miniCtx.moveTo(x, y); else miniCtx.lineTo(x, y);
   });
-  miniCtx.strokeStyle = 'rgba(77, 214, 255, 0.9)';
-  miniCtx.lineWidth = 1.5;
   miniCtx.stroke();
 
-  if (pts.length > 0) {
-    miniCtx.lineTo((pts[pts.length-1].t / maxT) * W, H);
-    miniCtx.lineTo(0, H);
-    miniCtx.closePath();
-    miniCtx.fillStyle = gradient;
-    miniCtx.fill();
-  }
+  const gradFill = miniCtx.createLinearGradient(0, 0, 0, H);
+  gradFill.addColorStop(0, 'rgba(0, 212, 255, 0.22)');
+  gradFill.addColorStop(1, 'rgba(0, 212, 255, 0.01)');
+  miniCtx.beginPath();
+  pts.forEach((p, i) => {
+    const x = X(p.t), y = Yalt(Math.max(0, p.z));
+    if (i === 0) miniCtx.moveTo(x, y); else miniCtx.lineTo(x, y);
+  });
+  miniCtx.lineTo(X(pts[pts.length - 1].t), H - padB);
+  miniCtx.lineTo(0, H - padB);
+  miniCtx.closePath();
+  miniCtx.fillStyle = gradFill;
+  miniCtx.fill();
 
-  if (currentIdx < pts.length) {
-    const cp = pts[currentIdx];
-    const cx = (cp.t / maxT) * W;
-    const cy = H - (cp.z / maxAlt) * (H - 8) - 4;
-    miniCtx.beginPath();
-    miniCtx.arc(cx, cy, 3, 0, Math.PI * 2);
-    miniCtx.fillStyle = '#ffffff';
-    miniCtx.fill();
+  miniCtx.strokeStyle = '#00d4ff';
+  miniCtx.lineWidth = 1.5;
+  miniCtx.beginPath();
+  pts.forEach((p, i) => {
+    const x = X(p.t), y = Yalt(Math.max(0, p.z));
+    if (i === 0) miniCtx.moveTo(x, y); else miniCtx.lineTo(x, y);
+  });
+  miniCtx.stroke();
 
-    miniCtx.beginPath();
-    miniCtx.moveTo(cx, 0);
-    miniCtx.lineTo(cx, H);
-    miniCtx.strokeStyle = 'rgba(255,255,255,0.2)';
-    miniCtx.lineWidth = 1;
-    miniCtx.stroke();
-  }
+  const cp = pts[Math.min(currentIdx, pts.length - 1)];
+  const cx = X(cp.t);
+  miniCtx.strokeStyle = 'rgba(255,255,255,0.25)';
+  miniCtx.lineWidth = 1;
+  miniCtx.beginPath();
+  miniCtx.moveTo(cx, 0);
+  miniCtx.lineTo(cx, H);
+  miniCtx.stroke();
 
-  miniCtx.font = '7px Inter';
-  miniCtx.fillStyle = 'rgba(255,255,255,0.3)';
-  miniCtx.fillText('LAUNCH', 2, H - 3);
-  miniCtx.fillText('ALT', 2, 10);
+  miniCtx.beginPath();
+  miniCtx.arc(cx, Yalt(Math.max(0, cp.z)), 3, 0, Math.PI * 2);
+  miniCtx.fillStyle = '#ffffff';
+  miniCtx.fill();
+
+  miniCtx.font = '600 7px Inter';
+  miniCtx.fillStyle = 'rgba(125,135,152,0.9)';
+  miniCtx.fillText('ALT', 3, 9);
 }
 
 const telAltVal  = document.getElementById('telAltVal');
@@ -690,13 +753,25 @@ const telMachVal = document.getElementById('telMachVal');
 const telTVal    = document.getElementById('telTVal');
 const flightPhaseEl = document.getElementById('flightPhase');
 const liveDot = document.querySelector('.live-dot');
+const thrFill = document.getElementById('thrFill');
+const thrVal  = document.getElementById('thrVal');
+const propAscentEl = document.getElementById('propAscent');
+const propLandingEl = document.getElementById('propLanding');
+const propValEl  = document.getElementById('propVal');
+const attTickEl  = document.getElementById('attTick');
+const pitchValEl = document.getElementById('pitchVal');
+const finChipEl  = document.getElementById('finChip');
+
+const TOTAL_PROP_KG = 1420;
+const LANDING_PROP_KG = 320;
 
 const phaseLabels = {
-  powered: { label: 'POWERED ASCENT',      color: '#ff6030' },
-  coast:   { label: 'COAST / NEAR SPACE',  color: '#00d4ff' },
-  entry:   { label: 'ENTRY / GRID FINS',   color: '#ffaa00' },
-  descent: { label: 'CONTROLLED DESCENT',  color: '#7b2ff7' },
-  landing: { label: 'LANDING SEQUENCE',    color: '#2ed573' },
+  powered:        { label: 'POWERED ASCENT',    color: '#ff6030' },
+  'ascent-coast': { label: 'COAST / BOOSTBACK', color: '#00d4ff' },
+  entry:          { label: 'ENTRY / GRID FINS', color: '#ffaa00' },
+  descent:        { label: 'CONTROLLED DESCENT', color: '#b48cff' },
+  'landing-burn': { label: 'LANDING BURN',      color: '#2ed573' },
+  touchdown:      { label: 'TOUCHDOWN',         color: '#2ed573' },
 };
 
 function updateTelemetry(pt) {
@@ -716,6 +791,39 @@ function updateTelemetry(pt) {
   flightPhaseEl.textContent = ph.label;
   liveDot.style.background  = ph.color;
 
+  const throttlePct = Math.round((pt.throttle || 0) * 100);
+  thrFill.style.height = throttlePct + '%';
+  thrFill.style.backgroundColor = ph.color;
+  thrVal.textContent = throttlePct + '%';
+
+  let ascKg = 0, lndKg = 0;
+  const propKg = (pt.propPct ?? 100) / 100 * TOTAL_PROP_KG;
+  if (pt.t < (state.trajectory.burnoutTime ?? 0)) {
+    lndKg = LANDING_PROP_KG;
+    ascKg = Math.max(0, propKg - LANDING_PROP_KG);
+  } else {
+    lndKg = Math.min(LANDING_PROP_KG, propKg);
+  }
+  propAscentEl.style.width  = (ascKg / TOTAL_PROP_KG * 100) + '%';
+  propLandingEl.style.width = (lndKg / TOTAL_PROP_KG * 100) + '%';
+  propValEl.textContent = Math.round(pt.propPct ?? 100) + '%';
+
+  const tiltDeg = pt.pitchDeg ?? 0;
+  attTickEl.style.transform = `translate(-50%, -50%) rotate(${tiltDeg.toFixed(1)}deg)`;
+  pitchValEl.textContent = Math.round(tiltDeg) + '\u00B0';
+
+  const gf = pt.gridFin ?? 0;
+  if (gf < 0.02) {
+    finChipEl.textContent = 'STOWED';
+    finChipEl.className = 'fin-chip stowed';
+  } else if (gf >= 0.995) {
+    finChipEl.textContent = 'OUT';
+    finChipEl.className = 'fin-chip out';
+  } else {
+    finChipEl.textContent = 'DEPLOYING';
+    finChipEl.className = 'fin-chip deploying';
+  }
+
   updateAnnunciator(pt);
   updateSkyColor(dispAltKm);
 
@@ -730,11 +838,12 @@ function updateAnnunciator(pt) {
   if (!traj || !el) return;
 
   let status = "";
-  if (traj.liftoffTime && pt.t >= traj.liftoffTime && pt.t < traj.liftoffTime + 2) status = "LIFT OFF";
-  else if (pt.t > 15 && pt.t < 18) status = "MAX-Q";
+  if (traj.liftoffTime !== null && pt.t >= traj.liftoffTime && pt.t < traj.liftoffTime + 2) status = "LIFT OFF";
+  else if (state.maxQPoint && pt.t >= state.maxQPoint.t - 1 && pt.t <= state.maxQPoint.t + 1) status = "MAX-Q";
   else if (traj.burnoutTime && pt.t > traj.burnoutTime - 1 && pt.t < traj.burnoutTime + 1) status = "MECO";
+  else if ((pt.throttle || 0) > 0.3 && pt.phase === 'ascent-coast' && !annunciatorStates.boostback) { status = "BOOSTBACK"; annunciatorStates.boostback = true; }
   else if (traj.apogeeTime && pt.t > traj.apogeeTime - 1 && pt.t < traj.apogeeTime + 1) status = "APOGEE REACHED";
-  else if (pt.phase === 'entry' && !annunciatorStates.entry) { status = "ENTRY BURN"; annunciatorStates.entry = true; }
+  else if (pt.phase === 'entry' && !annunciatorStates.entry) { status = "ENTRY INTERFACE"; annunciatorStates.entry = true; }
   else if (pt.landingBurn && !annunciatorStates.landing) { status = "LANDING BURN"; annunciatorStates.landing = true; }
 
   if (status && status !== lastStatus) {
@@ -746,7 +855,7 @@ function updateAnnunciator(pt) {
 }
 
 let lastStatus = "";
-const annunciatorStates = { entry: false, landing: false };
+const annunciatorStates = { entry: false, landing: false, boostback: false };
 
 function updateSkyColor(alt) {
   const t = Math.min(1, alt / 80);
@@ -756,26 +865,41 @@ function updateSkyColor(alt) {
   renderer.setClearColor(new THREE.Color(`rgb(${r},${g},${b})`));
 }
 
+const TIMELINE_EVENTS = ['LAUNCH', 'MECO', 'APOGEE', 'FIN DEPLOY', 'LANDING BURN', 'TOUCHDOWN'];
+const TIMELINE_SHORT = { LAUNCH: 'LIFTOFF', MECO: 'MECO', APOGEE: 'APOGEE', 'FIN DEPLOY': 'FINS OUT', 'LANDING BURN': 'LDG BURN', TOUCHDOWN: 'TOUCHDOWN' };
+
+function buildTimelineMarkers(traj) {
+  const wrap = document.getElementById('timelineMarkers');
+  if (!wrap || !traj.events) return;
+  const T = Math.max(1, traj.flightTime);
+  wrap.innerHTML = traj.events
+    .filter(ev => TIMELINE_EVENTS.includes(ev.label))
+    .map(ev => `
+      <div class="phase-marker" style="left:${(ev.t / T) * 100}%">
+        <div class="phase-line"></div>
+        <div class="phase-label">${TIMELINE_SHORT[ev.label] || ev.label}\u00A0${Math.round(ev.t)}s</div>
+      </div>
+    `).join('');
+}
+
 function updateRightPanel() {
   const traj = state.trajectory;
   if (!traj || !traj.metrics) return;
 
   const m = traj.metrics;
-  const site = SITES[state.activeSite];
-  const wind = WIND_CONDITIONS[state.activeWind];
 
   document.getElementById('mApogee').textContent = m.apogee.toFixed(1);
   document.getElementById('mMach').textContent   = m.maxMach.toFixed(2);
-  document.getElementById('mDrift').textContent  = m.drift.toFixed(2);
+  document.getElementById('mMaxQ').textContent   = m.maxQ.toFixed(1);
   document.getElementById('mLand').textContent   = m.landSpeed.toFixed(1);
+  document.getElementById('chartDrift').textContent = 'DRIFT ' + m.drift.toFixed(2) + ' km';
 
-  const descent = traj.points.find(p => p.phase === 'descent');
-  const positionMarker = (id, time) => {
-    document.getElementById(id).style.left = `${(time / traj.flightTime) * 100}%`;
-  };
-  positionMarker('pmBurnout', traj.burnoutTime);
-  positionMarker('pmApogee', traj.apogeeTime);
-  positionMarker('pmEntry', descent ? descent.t : traj.apogeeTime);
+  state.maxQPoint = traj.points.reduce(
+    (best, p) => (p.dynPressKPa > best.dynPressKPa ? p : best),
+    traj.points[0]
+  );
+
+  buildTimelineMarkers(traj);
 }
 
 const cameraTarget = new THREE.Vector3(0, 12, 0);
@@ -882,6 +1006,9 @@ function animate() {
     vz: THREE.MathUtils.lerp(currentPt.vz, nextPt.vz, sampleMix),
     speed: THREE.MathUtils.lerp(currentPt.speed, nextPt.speed, sampleMix),
     mach: THREE.MathUtils.lerp(currentPt.mach, nextPt.mach, sampleMix),
+    throttle: THREE.MathUtils.lerp(currentPt.throttle || 0, nextPt.throttle || 0, sampleMix),
+    pitchDeg: THREE.MathUtils.lerp(currentPt.pitchDeg || 0, nextPt.pitchDeg || 0, sampleMix),
+    gridFin: THREE.MathUtils.lerp(currentPt.gridFin || 0, nextPt.gridFin || 0, sampleMix),
     landingThrottle: THREE.MathUtils.lerp(currentPt.landingThrottle || 0, nextPt.landingThrottle || 0, sampleMix),
     landingDirX: THREE.MathUtils.lerp(currentPt.landingDirX || 0, nextPt.landingDirX || 0, sampleMix),
     landingDirY: THREE.MathUtils.lerp(currentPt.landingDirY || 0, nextPt.landingDirY || 0, sampleMix),
@@ -913,7 +1040,8 @@ function animate() {
         orientDir = landingThrustDir;
       } else {
         orientDir = velocityDir.clone();
-        if (pt.phase !== 'powered' && pt.vz < -20) orientDir.negate();
+        const boostingBack = pt.phase === 'ascent-coast' && (pt.throttle || 0) > 0.3;
+        if ((pt.phase !== 'powered' && pt.vz < -20) || boostingBack) orientDir.negate();
       }
 
       const worldUp = Math.abs(orientDir.y) > 0.999
@@ -930,36 +1058,23 @@ function animate() {
 
     const isPowered = pt.phase === 'powered';
     const isLanding = !!pt.landingBurn;
-    const isActive = isPowered || isLanding;
+    const thr = THREE.MathUtils.clamp(pt.throttle || 0, 0, 1);
+    const isActive = thr > 0.02;
 
-    let glowIntensity = 0;
-    if (isPowered || isLanding) glowIntensity = 3 + Math.sin(animFrameCounter * 0.3) * 0.5;
-    rocketObj.engineLight.intensity = glowIntensity * 0.6;
+    const flicker = Math.sin(animFrameCounter * 0.3) * 0.12;
+    rocketObj.engineLight.intensity = isActive ? (0.8 + thr * (2.6 + flicker)) : 0;
     if (isPowered)      { rocketObj.engineLight.color.set(0xff6030); rocketObj.plume.material.color.set(0xffb060); }
-    else if (isLanding) { rocketObj.engineLight.color.set(0x30aaff); rocketObj.plume.material.color.set(0x88ccff); }
+    else                { rocketObj.engineLight.color.set(0x30aaff); rocketObj.plume.material.color.set(0x88ccff); }
     rocketObj.plume.visible = isActive;
 
     updateParticles(rocketPos, isLanding ? landingThrustDir : velocityDir, isActive, isLanding);
 
-    const isDescent = pt.phase === 'entry' || pt.phase === 'descent' || pt.phase === 'landing' || pt.landingBurn;
-    const finBlend = 1 - Math.exp(-4 * Math.min(delta, 0.05));
+    const gfTarget = THREE.MathUtils.clamp(pt.gridFin || 0, 0, 1);
     rocketObj.gridFins.forEach(gf => {
       const hinge = gf.userData.hinge;
-      if (isDescent) {
-        hinge.visible = true;
-        hinge.rotation.y += (0 - hinge.rotation.y) * finBlend;
-      } else {
-        hinge.rotation.y = -Math.PI / 2;
-        hinge.visible = false;
-        gf.rotation.z = 0;
-        gf.rotation.x = 0;
-        return;
-      }
-
-      const deployed = hinge.rotation.y > -0.3;
-      const targetTilt = deployed ? -0.55 : 0;
-      gf.rotation.z += (targetTilt - gf.rotation.z) * finBlend;
-      gf.rotation.x += (0 - gf.rotation.x) * finBlend;
+      hinge.visible = gfTarget > 0.02;
+      hinge.rotation.y = -Math.PI / 2 * (1 - gfTarget);
+      gf.rotation.z = -0.55 * gfTarget;
     });
 
     const legT = THREE.MathUtils.clamp((450 - pt.z) / 370, 0, 1);
@@ -971,11 +1086,13 @@ function animate() {
     });
 
     if (rocketObj.plume.visible) {
-      rocketObj.plume.material.opacity = 0.4 + Math.sin(animFrameCounter * 0.5) * 0.15;
-      const plumeScale = isPowered
-        ? 1.0 + Math.random() * 0.15
-        : 0.35 + (pt.landingThrottle || 0) * 0.45 + Math.random() * 0.08;
-      rocketObj.plume.scale.setScalar(plumeScale);
+      rocketObj.plume.material.opacity = (0.25 + thr * 0.45) + Math.sin(animFrameCounter * 0.5) * 0.1;
+      const plumeScale = (0.22 + thr * 0.95) * (isPowered ? 1.0 : 0.55) + Math.random() * 0.06;
+      rocketObj.plume.scale.set(
+        0.6 + thr * 0.6,
+        plumeScale,
+        0.6 + thr * 0.6
+      );
     }
   }
 
@@ -1010,21 +1127,21 @@ function buildSitePanel() {
   siteList.innerHTML = Object.entries(SITES).map(([key, site]) => `
     <button class="site-btn ${key === state.activeSite ? 'active' : ''}"
             id="siteBtn_${key}" onclick="selectSite('${key}')">
-      <div class="site-dot" style="background:${site.color};color:${site.color}"></div>
+      <div class="site-dot" style="background:${site.color}"></div>
       <div class="site-info">
         <div class="site-name">${site.name}</div>
-        <div class="site-desc">${site.fullName}</div>
-        <div class="site-loc">${site.lat.toFixed(2)}°N ${Math.abs(site.lon).toFixed(2)}°W</div>
+        <div class="site-desc">${site.region}</div>
+        <div class="site-loc">${Math.abs(site.lat).toFixed(2)}\u00B0${site.lat >= 0 ? 'N' : 'S'} ${Math.abs(site.lon).toFixed(2)}\u00B0${site.lon >= 0 ? 'E' : 'W'}</div>
       </div>
     </button>
   `).join('');
 
   const windList = document.getElementById('windList');
   windList.innerHTML = Object.entries(WIND_CONDITIONS).map(([key, w]) => `
-    <button class="wind-btn ${key === state.activeWind ? 'active' : ''}"
+    <button class="seg-btn ${key === state.activeWind ? 'active' : ''}"
             id="windBtn_${key}" onclick="selectWind('${key}')">
-      <div class="wind-name">${w.label} (${w.beaufort})</div>
-      <div class="wind-speed">${w.speed}</div>
+      <span class="wind-name">${w.label}</span>
+      <span class="wind-speed">${w.speed.replace('~', '')}</span>
     </button>
   `).join('');
 }
@@ -1044,32 +1161,41 @@ window.selectSite = function(key) {
 window.selectWind = function(key) {
   state.activeWind = key;
   state.frameIdx = 0;
+  state.playbackTime = 0;
   buildScene();
   updateRightPanel();
-  document.querySelectorAll('.wind-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#windList .seg-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(`windBtn_${key}`).classList.add('active');
   showToast(`Wind: ${WIND_CONDITIONS[key].label} (${WIND_CONDITIONS[key].speed})`);
 };
 
 function setViewMode(mode) {
   state.viewMode = mode;
-  document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
-  const map = { follow: 'btnFollow', overview: 'btnOverview', top: 'btnTop' };
-  document.getElementById(map[mode]).classList.add('active');
+  document.querySelectorAll('#viewBtns .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === mode);
+  });
   if (mode !== 'follow') {
     orbitCenter.set(0, 80, 0);
     updateOrbitCamera();
   }
 }
 
-document.getElementById('btnFollow').onclick   = () => setViewMode('follow');
-document.getElementById('btnOverview').onclick = () => setViewMode('overview');
-document.getElementById('btnTop').onclick      = () => setViewMode('top');
+document.querySelectorAll('#viewBtns .seg-btn').forEach(btn => {
+  btn.addEventListener('click', () => setViewMode(btn.dataset.view));
+});
+
+document.getElementById('panelToggle').addEventListener('click', () => {
+  if (window.innerWidth <= 900) {
+    document.body.classList.toggle('panel-open');
+  } else {
+    document.body.classList.toggle('panel-hidden');
+  }
+});
 
 function updateTrajectoryToggleLabel() {
   const btn = document.getElementById('btnToggleTraj');
   if (!btn) return;
-  btn.textContent = state.showTrajectories ? 'Hide trails' : 'Show trails';
+  btn.textContent = state.showTrajectories ? 'Trails on' : 'Trails off';
   btn.classList.toggle('active', state.showTrajectories);
 }
 
@@ -1092,6 +1218,7 @@ document.getElementById('btnRewind').onclick = () => {
   lastStatus = "";
   annunciatorStates.entry = false;
   annunciatorStates.landing = false;
+  annunciatorStates.boostback = false;
 
   updateTelemetry(state.trajectory.points[0]);
   drawMiniChart(state.trajectory, 0);

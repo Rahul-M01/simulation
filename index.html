@@ -5,29 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>UK Reusable Booster | 3D Mission Simulation</title>
   <meta name="description" content="Interactive 3D simulation of a reusable booster launching and landing from UK spaceports." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="stylesheet" href="style.css?v=6" />
 </head>
 <body>
   <div id="loader">
     <div class="loader-inner">
       <div class="loader-logo">
         <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
-          <path d="M30 5 L30 55" stroke="url(#grad1)" stroke-width="2.5" stroke-linecap="round"/>
-          <path d="M30 5 L22 18 L38 18 Z" fill="url(#grad1)"/>
-          <path d="M22 42 L30 55 L38 42" stroke="url(#grad1)" stroke-width="2" fill="none" stroke-linecap="round"/>
-          <circle cx="30" cy="5" r="3" fill="#00d4ff"/>
-          <defs>
-            <linearGradient id="grad1" x1="30" y1="5" x2="30" y2="55" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#00d4ff"/>
-              <stop offset="100%" stop-color="#7b2ff7"/>
-            </linearGradient>
-          </defs>
+          <path d="M30 5 L30 55" stroke="#00d4ff" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M30 5 L22 18 L38 18 Z" fill="#00d4ff"/>
+          <path d="M22 42 L30 55 L38 42" stroke="#00d4ff" stroke-width="2" fill="none" stroke-linecap="round"/>
         </svg>
       </div>
       <div class="loader-title">UK BOOSTER MISSION</div>
-      <div class="loader-sub">Loading simulation</div>
+      <div class="loader-sub">Initializing telemetry</div>
       <div class="loader-bar"><div class="loader-fill" id="loaderFill"></div></div>
       <div class="loader-pct" id="loaderPct">0%</div>
     </div>
@@ -35,16 +26,13 @@
 
   <header id="appHeader">
     <div class="header-left">
+      <button id="panelToggle" class="panel-toggle" title="Mission setup" aria-label="Toggle mission setup panel">
+        <span></span><span></span><span></span>
+      </button>
       <div class="header-logo">
         <svg width="32" height="32" viewBox="0 0 60 60" fill="none">
-          <path d="M30 5 L30 55" stroke="url(#hg1)" stroke-width="3" stroke-linecap="round"/>
-          <path d="M30 5 L21 20 L39 20 Z" fill="url(#hg1)"/>
-          <defs>
-            <linearGradient id="hg1" x1="30" y1="5" x2="30" y2="55" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#00d4ff"/>
-              <stop offset="100%" stop-color="#7b2ff7"/>
-            </linearGradient>
-          </defs>
+          <path d="M30 5 L30 55" stroke="#00d4ff" stroke-width="3" stroke-linecap="round"/>
+          <path d="M30 5 L21 20 L39 20 Z" fill="#00d4ff"/>
         </svg>
       </div>
       <div>
@@ -59,19 +47,19 @@
       </div>
     </div>
     <div class="header-right">
-      <div class="telemetry-pill" id="telAlt">
+      <div class="telemetry-pill">
         <span class="tel-label">ALT</span>
         <span class="tel-val" id="telAltVal">0 km</span>
       </div>
-      <div class="telemetry-pill" id="telSpd">
+      <div class="telemetry-pill">
         <span class="tel-label">SPD</span>
         <span class="tel-val" id="telSpdVal">0 m/s</span>
       </div>
-      <div class="telemetry-pill" id="telMach">
+      <div class="telemetry-pill">
         <span class="tel-label">MACH</span>
         <span class="tel-val" id="telMachVal">0.00</span>
       </div>
-      <div class="telemetry-pill" id="telT">
+      <div class="telemetry-pill">
         <span class="tel-label">T+</span>
         <span class="tel-val" id="telTVal">0s</span>
       </div>
@@ -89,63 +77,89 @@
     <div class="panel-label">Launch site</div>
     <div id="siteList"></div>
     <div class="panel-divider"></div>
-    <div class="panel-label">Wind condition</div>
-    <div id="windList"></div>
+    <div class="panel-label">Wind condition <span class="panel-unit">m/s @ 10m</span></div>
+    <div class="seg-control" id="windList"></div>
     <div class="panel-divider"></div>
     <div class="panel-label">Camera</div>
-    <div id="viewBtns">
-      <button class="view-btn active" id="btnFollow">Follow Rocket</button>
-      <button class="view-btn" id="btnOverview">Overview</button>
-      <button class="view-btn" id="btnTop">Top-Down</button>
+    <div class="seg-control" id="viewBtns">
+      <button class="seg-btn active" id="btnFollow" data-view="follow">Follow</button>
+      <button class="seg-btn" id="btnOverview" data-view="overview">Overview</button>
+      <button class="seg-btn" id="btnTop" data-view="top">Top-down</button>
     </div>
   </aside>
 
   <aside id="telPanel">
-    <div class="panel-title">MISSION SUMMARY</div>
+    <div class="panel-title">TELEMETRY</div>
 
+    <div class="panel-label">Live</div>
+    <div class="live-grid">
+      <div class="throttle-block">
+        <div class="throttle-track">
+          <div class="throttle-fill" id="thrFill"></div>
+        </div>
+        <div class="throttle-caption">
+          <span class="mini-label">THR</span>
+          <span class="mono-num" id="thrVal">0%</span>
+        </div>
+      </div>
+
+      <div class="live-stack">
+        <div class="prop-gauge">
+          <div class="prop-seg ascent" id="propAscent"></div>
+          <div class="prop-seg landing" id="propLanding"></div>
+        </div>
+        <div class="prop-caption">
+          <span class="mini-label">PROP</span>
+          <span class="legend"><i class="dot asc-dot"></i>ASC <i class="dot lnd-dot"></i>LND <span class="mono-num" id="propVal">100%</span></span>
+        </div>
+        <div class="pitch-row">
+          <div class="attitude-indicator">
+            <div class="attitude-tick" id="attTick"></div>
+            <div class="attitude-center"></div>
+          </div>
+          <div class="pitch-caption">
+            <span class="mini-label">PITCH</span>
+            <span class="mono-num" id="pitchVal">0°</span>
+          </div>
+        </div>
+        <div class="fin-row">
+          <span class="mini-label">GRID FINS</span>
+          <span class="fin-chip stowed" id="finChip">STOWED</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-divider"></div>
+    <div class="panel-label">Mission summary</div>
     <div class="metrics-grid">
-      <div class="metric-card" id="cardApogee">
-        <div class="metric-header">
-          <span class="metric-icon">AP</span>
-          <span class="metric-name">APOGEE</span>
-        </div>
-        <div class="metric-value" id="mApogee">—</div>
-        <div class="metric-unit">km AGL</div>
+      <div class="metric-card">
+        <span class="metric-tag">AP</span>
+        <span class="metric-value mono-num" id="mApogee">—</span>
+        <span class="metric-unit">km apogee</span>
       </div>
-
-      <div class="metric-card" id="cardMach">
-        <div class="metric-header">
-          <span class="metric-icon">MX</span>
-          <span class="metric-name">MAX MACH</span>
-        </div>
-        <div class="metric-value" id="mMach">—</div>
-        <div class="metric-unit">Mach</div>
+      <div class="metric-card">
+        <span class="metric-tag">MX</span>
+        <span class="metric-value mono-num" id="mMach">—</span>
+        <span class="metric-unit">max mach</span>
       </div>
-
-      <div class="metric-card" id="cardDrift">
-        <div class="metric-header">
-          <span class="metric-icon">DR</span>
-          <span class="metric-name">DRIFT</span>
-        </div>
-        <div class="metric-value" id="mDrift">—</div>
-        <div class="metric-unit">km lateral</div>
+      <div class="metric-card">
+        <span class="metric-tag">Q</span>
+        <span class="metric-value mono-num" id="mMaxQ">—</span>
+        <span class="metric-unit">kPa max q</span>
       </div>
-
-      <div class="metric-card" id="cardLand">
-        <div class="metric-header">
-          <span class="metric-icon">TD</span>
-          <span class="metric-name">TOUCHDOWN</span>
-        </div>
-        <div class="metric-value" id="mLand">—</div>
-        <div class="metric-unit">m/s</div>
+      <div class="metric-card">
+        <span class="metric-tag">TD</span>
+        <span class="metric-value mono-num" id="mLand">—</span>
+        <span class="metric-unit">m/s touchdown</span>
       </div>
     </div>
 
     <div class="panel-divider"></div>
     <div class="panel-label">Flight profile</div>
     <div class="chart-shell">
-      <canvas id="miniChart" width="220" height="90"></canvas>
+      <canvas id="miniChart" width="236" height="120"></canvas>
     </div>
+    <div class="chart-footnote"><span class="lg-alt">ALT</span><span class="lg-spd">SPD</span><span class="foot-right" id="chartDrift">DRIFT — km</span></div>
 
     <div class="panel-divider"></div>
     <div class="panel-label">Playback</div>
@@ -154,12 +168,12 @@
         <button class="pb-btn" id="btnRewind" title="Restart">⏮</button>
         <button class="pb-btn primary" id="btnPlay" title="Play/Pause">▶</button>
         <button class="pb-btn" id="btnFwd" title="Fast-Forward">⏩</button>
-        <button class="trail-btn" id="btnToggleTraj" title="Toggle trajectories">Show trails</button>
+        <button class="trail-btn" id="btnToggleTraj" title="Toggle trajectories">Trails off</button>
       </div>
       <div class="speed-row">
         <span class="spd-lbl">Speed</span>
         <input type="range" id="speedSlider" min="0.5" max="8" step="0.5" value="1" />
-        <span class="spd-val" id="speedVal">×1</span>
+        <span class="spd-val mono-num" id="speedVal">×1</span>
       </div>
       <input type="range" id="scrubBar" min="0" max="100" value="0" class="scrub-bar" />
     </div>
@@ -167,33 +181,14 @@
   </aside>
 
   <div id="timelineBar">
-    <div class="phase-marker" style="left:0%">
-      <div class="phase-line"></div>
-      <div class="phase-label">LAUNCH</div>
-    </div>
-    <div class="phase-marker" id="pmBurnout">
-      <div class="phase-line"></div>
-      <div class="phase-label">BURNOUT</div>
-    </div>
-    <div class="phase-marker" id="pmApogee">
-      <div class="phase-line"></div>
-      <div class="phase-label">APOGEE</div>
-    </div>
-    <div class="phase-marker" id="pmEntry">
-      <div class="phase-line"></div>
-      <div class="phase-label">DESCENT</div>
-    </div>
-    <div class="phase-marker" style="right:0;left:auto">
-      <div class="phase-line"></div>
-      <div class="phase-label">LANDING</div>
-    </div>
     <div class="timeline-progress" id="timelineProg"></div>
+    <div id="timelineMarkers"></div>
   </div>
 
   <div id="toastContainer"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-  <script src="data.js?v=5"></script>
-  <script src="app.js?v=5"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="data.js?v=6"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

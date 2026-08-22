@@ -4,7 +4,8 @@
   "description": "UK Reusable Booster 3D Mission Simulation",
   "main": "app.js",
   "scripts": {
-    "start": "npx http-server ./"
+    "start": "npx http-server ./",
+    "test": "node test/physics.test.js"
   },
   "dependencies": {
     "http-server": "^14.1.1"
