@@ -60,8 +60,10 @@ function generateTrajectory(site, windKey) {
   const TOTAL_PROP_MASS   = ASCENT_PROP_MASS + LANDING_PROP_MASS;
   const ISP_ASCENT        = 290;
   const ISP_LANDING       = 285;
-  const THRUST_MAX        = 66000;
+  const THRUST_MAX        = 46000;
   const THROTTLE_MIN      = 0.4;
+  const LANDING_THRUST_MAX = 38000;
+  const LAND_LEG_ALT       = 3.5;
   const RAMP_TIME         = 1.2;
   const BODY_RADIUS       = 0.6;
 
@@ -73,15 +75,15 @@ function generateTrajectory(site, windKey) {
   const DRAG_REF_AREA = Math.PI * 0.6 * 0.6; // true frontal area of the 1.2 m body
 
   const FIN_CDS_MAX     = 1.15;
-  const FIN_DEPLOY_ALT  = 30000;
+  const FIN_DEPLOY_ALT  = 16500;
   const FIN_DEPLOY_TIME = 3.0;
 
   const PITCH_KICK_SPEED = 35;
   const PITCH_START_ELEV = 90;
-  const PITCH_END_ELEV   = 68;
+  const PITCH_END_ELEV   = 56;
   const PITCH_EASE_SHAPE = 4.4;
 
-  const IGNITION_SAFETY     = 1.40;
+  const IGNITION_SAFETY     = 1.55;
   const HOVERSLAM_LAT_KP    = 0.90;
   const SETTLE_KP           = 3.0;
   const LAND_TILT_LIMIT     = 22 * Math.PI / 180;
@@ -339,6 +341,7 @@ function generateTrajectory(site, windKey) {
     let isp = ISP_ASCENT;
     let throttle = 0;
     let pitchDeg = 0;
+    let lastCoastPitch = 0;
     let phase = 'powered';
     let lb = false, lt = 0, ldx = 0, ldy = 0, ldz = 1;
     let holdPad = false;
@@ -436,7 +439,7 @@ function generateTrajectory(site, windKey) {
           }
           // Gate on drag-free capability: drag collapses as the burn
           // kills airspeed, so budgeting on it lands you short of sky.
-          const aCap = (THRUST_MAX / s.m) * Math.cos(LAND_TILT_LIMIT) - G0;
+          const aCap = (LANDING_THRUST_MAX / s.m) * Math.cos(LAND_TILT_LIMIT) - G0;
           if (aCap > 1 && s.z <= IGNITION_SAFETY * s.vz * s.vz / (2 * aCap)) {
             landingIgnited = true;
             landingIgnitionTime = t;
@@ -455,15 +458,21 @@ function generateTrajectory(site, windKey) {
             // Terminal brake onto a fixed touchdown speed: PD with
             // authority to saturate the engine.
             const vzSettle = -LAND_VZ_MIN;
-            azCmd = G0 + SETTLE_KP * (vzSettle - s.vz) - aero.daz;
-            azCmd = Math.min(Math.max(azCmd, 0), THRUST_MAX / s.m);
+            // Continuous braking curve into leg contact: areq is the
+            // deceleration that lands vf exactly at hf, so there is no
+            // hover phase before touchdown.
+            const hfTouch = 6;
+            const areqLand = (s.vz * s.vz - LAND_VZ_MIN * LAND_VZ_MIN) /
+              (2 * Math.max(hfTouch, h));
+            azCmd = G0 + clamp(areqLand, 0, LANDING_THRUST_MAX / s.m) - aero.daz;
+            azCmd = Math.min(Math.max(azCmd, 0), LANDING_THRUST_MAX / s.m);
           } else {
             // Kinematic steering: shed (v^2 - vf^2) / (2(h-hf)) so the
             // vertical speed meets vf right at the settle window edge.
             const hf = Math.min(LAND_WINDOW_H, Math.max(8, h * 0.2));
             const areq = (s.vz * s.vz - LAND_VZ_MIN * LAND_VZ_MIN) /
               (2 * Math.max(hf, h - hf));
-            azCmd = G0 + clamp(areq, 0, THRUST_MAX / s.m) - aero.daz;
+            azCmd = G0 + clamp(areq, 0, LANDING_THRUST_MAX / s.m) - aero.daz;
           }
           const axCmd = -HOVERSLAM_LAT_KP * s.vx - aero.dax;
           const ayCmd = -HOVERSLAM_LAT_KP * s.vy - aero.day;
@@ -472,34 +481,48 @@ function generateTrajectory(site, windKey) {
           let Ty = s.m * ayCmd;
           let Tz = Math.max(0, s.m * azCmd);
 
-          const effMin = h < LAND_WINDOW_H ? 0 : THROTTLE_MIN * THRUST_MAX;
-          let mag = Math.sqrt(Tx * Tx + Ty * Ty + Tz * Tz);
-          if (mag > THRUST_MAX) {
-            const sc = THRUST_MAX / mag;
-            Tx *= sc; Ty *= sc; Tz *= sc;
-            mag = THRUST_MAX;
-          } else if (mag > 1e-9 && mag < effMin) {
-            const sc = effMin / mag;
-            Tx *= sc; Ty *= sc; Tz *= sc;
-            mag = effMin;
-          } else if (mag <= 1e-9 && effMin > 0) {
-            Tz = effMin;
-            mag = effMin;
-          }
-
-          const thMax = Tz * Math.tan(LAND_TILT_LIMIT);
-          const hMag = Math.sqrt(Tx * Tx + Ty * Ty);
+          // Tilt cone first: lateral authority exists only around the
+          // vertical thrust component.
+          let thMax = Tz * Math.tan(LAND_TILT_LIMIT);
+          let hMag = Math.sqrt(Tx * Tx + Ty * Ty);
           if (hMag > thMax && hMag > 1e-9) {
             const sc = thMax / hMag;
             Tx *= sc; Ty *= sc;
           }
+
+          // Budget: over-limit steals from lateral only. The vertical
+          // brake is never starved by the wind fight.
+          const latBudgetSq = LANDING_THRUST_MAX * LANDING_THRUST_MAX - Tz * Tz;
+          if (latBudgetSq < 0) {
+            Tz = LANDING_THRUST_MAX;
+            Tx = 0; Ty = 0;
+          } else {
+            thMax = Math.sqrt(latBudgetSq);
+            hMag = Math.sqrt(Tx * Tx + Ty * Ty);
+            if (hMag > thMax && hMag > 1e-9) {
+              const sc = thMax / hMag;
+              Tx *= sc; Ty *= sc;
+            }
+          }
+
+          const effMin = h < LAND_WINDOW_H ? 0 : THROTTLE_MIN * LANDING_THRUST_MAX;
+          let mag = Math.min(Math.hypot(Tx, Ty, Tz), LANDING_THRUST_MAX);
+          if (mag > 1e-9 && mag < effMin && h >= LAND_WINDOW_H) {
+            const sc = effMin / mag;
+            Tx *= sc; Ty *= sc; Tz *= sc;
+            mag = effMin;
+          } else if ((mag <= 1e-9 || h < LAND_WINDOW_H) && Tz < effMin && effMin > 0) {
+            Tz = Math.min(effMin, LANDING_THRUST_MAX);
+          }
+          mag = Math.hypot(Tx, Ty, Tz);
+
           mag = Math.sqrt(Tx * Tx + Ty * Ty + Tz * Tz);
 
           if (mag > 100) {
             engineOn = true;
             isp = ISP_LANDING;
             thrustX = Tx; thrustY = Ty; thrustZ = Tz;
-            throttle = mag / THRUST_MAX;
+            throttle = mag / LANDING_THRUST_MAX;
             lb = true;
             lt = throttle;
             ldx = Tx / mag; ldy = Ty / mag; ldz = Tz / mag;
@@ -514,9 +537,14 @@ function generateTrajectory(site, windKey) {
     if (engineOn) {
       pitchDeg = Math.acos(clamp(thrustZ / Math.max(1e-9, thrustMag), -1, 1)) * 180 / Math.PI;
     } else if (liftoff && meco) {
+      // Coast/descent attitude: track flight path while it is well
+      // defined, then hold the last good value through apex stall.
       const spdTotal = Math.sqrt(s.vx * s.vx + s.vy * s.vy + s.vz * s.vz);
-      const vzUnit = s.vz >= 0 ? 1 : -1;
-      pitchDeg = Math.acos(clamp(vzUnit * s.vz / Math.max(1e-6, spdTotal), -1, 1)) * 180 / Math.PI;
+      if (spdTotal > 40) {
+        const vzUnit = s.vz >= 0 ? 1 : -1;
+        lastCoastPitch = Math.acos(clamp(vzUnit * s.vz / Math.max(1e-6, spdTotal), -1, 1)) * 180 / Math.PI;
+      }
+      pitchDeg = lastCoastPitch;
     }
 
     const forceFn = (st) => {
@@ -562,6 +590,19 @@ function generateTrajectory(site, windKey) {
       s = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, m: s.m };
     } else {
       s = rk4Step(s, DT, forceFn);
+    }
+
+    // Leg contact: engines cut, booster settles onto the pad.
+    if (
+      liftoff && meco && landingIgnited &&
+      !holdPad && s.z > 0 && s.z <= LAND_LEG_ALT && s.vz >= -7
+    ) {
+      const touchSpd = Math.sqrt(s.vx * s.vx + s.vy * s.vy + s.vz * s.vz);
+      points.push(buildPoint(t, 'touchdown', 0,
+        Math.acos(clamp(ldz, -1, 1)) * 180 / Math.PI,
+        1, lb, lt, ldx, ldy, ldz,
+        { x: s.x, y: s.y, z: 0, vx: s.vx, vy: s.vy, vz: s.vz, speed: touchSpd }));
+      break;
     }
 
     if (s.z > apogeeZ) {
